@@ -7,7 +7,7 @@ import {
 import { motion } from 'framer-motion'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from '../stores/useStore'
-import { formatMeta, buildPlayableUrl } from '../utils'
+import { formatMeta, resolvePlaybackUrl } from '../utils'
 import * as api from '../api'
 
 const { Title, Text, Paragraph } = Typography
@@ -155,8 +155,9 @@ export default function DetailView() {
       const seekTime = (lastEntry?.flagName === line.groupName && lastEntry?.episodeIndex === episodeIndex && lastEntry?.currentTime > 0)
         ? lastEntry.currentTime : 0
 
-      api.sourcePlay(line.sourceUid, line.groupName, ep.id || ep.url).then(async (playPayload) => {
-        let playUrl = buildPlayableUrl(playPayload, ep.id || ep.url)
+      const episodeId = ep.id || ep.url
+      resolvePlaybackUrl(() => api.sourcePlay(line.sourceUid, line.groupName, episodeId), episodeId).then(async (resolvedUrl) => {
+        let playUrl = resolvedUrl
 
         // AI URL cleaning
         if (store.settings.aiEnabled && store.settings.aiUrl && store.settings.aiKey && playUrl) {
@@ -180,7 +181,7 @@ export default function DetailView() {
           lineIndex,
         })
         navigate(`/player?url=${encodeURIComponent(playUrl)}&title=${encodeURIComponent(groupDetail?.name || wallVideo?.name || '')}&ep=${encodeURIComponent(ep.name)}&source=${line.sourceUid}&vod=${wallVideo?.id || ''}&group=1&seek=${seekTime}`)
-      }).catch(() => message.error('获取播放地址失败'))
+      }).catch((err) => message.error('获取播放地址失败: ' + err.message))
       .finally(() => setLoadingEpIdx(-1))
     },
     [groupLines, wallVideo, groupDetail, groupSources, store, navigate]

@@ -96,11 +96,30 @@ function hasPlayableScheme(value) {
   return /^(https?:\/\/|rtmp:\/\/|rtsp:\/\/|ftp:\/\/|magnet:|thunder:|ed2k:\/\/|\/\/)/i.test(value || '')
 }
 
+function directPlayableUrl(value) {
+  const url = String(value || '').trim()
+  if (!hasPlayableScheme(url) || /[|\s]/.test(url)) return ''
+  return url.startsWith('//') ? `https:${url}` : url
+}
+
+function directMediaFallback(value) {
+  const url = directPlayableUrl(value)
+  if (!url) return ''
+  try {
+    const parsed = new URL(url)
+    if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) return ''
+    return /\.(m3u8|mpd|mp4|m4v|webm|mkv|mov|flv|avi|ts|mp3|aac|ogg)$/i.test(parsed.pathname) ? url : ''
+  } catch {
+    return ''
+  }
+}
+
 function joinPlayableUrl(baseUrl, targetUrl) {
   const base = sanitizePlayableUrl(baseUrl)
-  const target = sanitizePlayableUrl(targetUrl)
+  const target = String(targetUrl || '').trim()
   if (!base) return target
   if (!target) return base
+  if (/[?&][^=&#]+=$/.test(base)) return `${base}${target}`
   if (hasPlayableScheme(target)) return target.startsWith('//') ? `https:${target}` : target
   if (target.startsWith('/')) {
     try { return new URL(target, base).toString() } catch { return `${base}${target}` }
@@ -110,8 +129,9 @@ function joinPlayableUrl(baseUrl, targetUrl) {
 
 function splitPlaylistRow(row) {
   const index = row.indexOf('$')
-  if (index < 0) return { name: row.trim() || '立即播放', id: sanitizePlayableUrl(row) }
-  return { name: row.slice(0, index).trim() || '立即播放', id: sanitizePlayableUrl(row.slice(index + 1)) }
+  // Spider IDs may contain URLs and separator-delimited metadata; only the plugin can interpret them.
+  if (index < 0) return { name: row.trim() || '立即播放', id: row.trim() }
+  return { name: row.slice(0, index).trim() || '立即播放', id: row.slice(index + 1).trim() }
 }
 
 export function parsePlayGroups(vod) {
@@ -160,15 +180,32 @@ export function normalizeDetail(payload, source) {
 }
 
 export function buildPlayableUrl(playPayload, fallbackId) {
-  const rawUrl = sanitizePlayableUrl(playPayload?.url || fallbackId)
+  const rawUrl = playPayload?.url ? sanitizePlayableUrl(playPayload.url) : String(fallbackId || '').trim()
   const playUrl = sanitizePlayableUrl(playPayload?.playUrl || '')
 
   if (Number(playPayload?.parse || 0) === 1 && playUrl) {
-    return sanitizePlayableUrl(joinPlayableUrl(playUrl, rawUrl))
+    if (!rawUrl) return ''
+    return directPlayableUrl(joinPlayableUrl(playUrl, rawUrl))
   }
 
-  if (rawUrl.startsWith('//')) return `https:${rawUrl}`
-  return sanitizePlayableUrl(rawUrl)
+  return playPayload?.url ? directPlayableUrl(rawUrl) : directMediaFallback(rawUrl)
+}
+
+export async function resolvePlaybackUrl(request, fallbackId) {
+  try {
+    const payload = await request()
+    if (payload?.ok === false) {
+      throw new Error(payload.error || payload.message || '获取播放地址失败')
+    }
+    const url = buildPlayableUrl(payload, fallbackId)
+    if (!url) throw new Error('视频源未返回可用的播放地址')
+    return url
+  } catch (err) {
+    // An already playable URL can survive a resolver outage, but an opaque ID must never bypass the plugin.
+    const directUrl = directMediaFallback(fallbackId)
+    if (directUrl) return directUrl
+    throw err
+  }
 }
 
 export function formatMeta(detail) {

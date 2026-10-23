@@ -20,6 +20,7 @@ export function initMessageHandler() {
       if (isAbortError(err)) return Promise.reject(err)
 
       const msg =
+        err.response?.data?.error ||
         err.response?.data?.message ||
         (typeof err.response?.data === 'string' ? err.response.data : null) ||
         err.message ||

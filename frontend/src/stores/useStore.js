@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import * as api from '../api'
 import {
   normalizeList, normalizeClasses, normalizeVideoCard, normalizeDetail,
-  buildPlayableUrl, mergeVideosByName, classIdOf,
+  resolvePlaybackUrl, mergeVideosByName, classIdOf,
 } from '../utils'
 
 const HISTORY_KEY = 'playhub:history'
@@ -200,10 +200,12 @@ export const useStore = create((set, get) => ({
         selectedUid = rec?.uid || ''
       }
 
+      groupLinesCache.clear()
       set({
         configUrl: url, config: cfg, sources: sites, selectedSourceUid: selectedUid,
         classes: classes.length ? classes : get().classes,
         activeClassId: '', searchCache: null, bootstrapped: true,
+        detailCache: {}, currentDetail: null, currentPlayback: null,
         history: loadLS(configHistoryKey(url), []),
       })
       localStorage.setItem('playhub:configUrl', url)
@@ -635,18 +637,15 @@ export const useStore = create((set, get) => ({
       if (!group) return null
       const episode = group.episodes[episodeIndex]
       if (!episode) return null
-      let playUrl = episode.id || episode.url
-      try {
-        const playPayload = await api.sourcePlay(sourceUid, flagName, episode.id || episode.url)
-        playUrl = buildPlayableUrl(playPayload, episode.id || episode.url)
-      } catch {}
+      const episodeId = episode.id || episode.url
+      const playUrl = await resolvePlaybackUrl(() => api.sourcePlay(sourceUid, flagName, episodeId), episodeId)
       const playback = { sourceUid, vodId, title: detail.name, poster: detail.pic, flagName, episodeIndex, episodeName: episode.name, url: playUrl }
       set({ currentPlayback: playback })
       get().upsertHistory(playback)
       return playback
     } catch (err) {
       console.error('playEpisode error:', err)
-      return null
+      throw err
     } finally {
       set((s) => ({ loading: { ...s.loading, player: false } }))
     }
@@ -654,30 +653,33 @@ export const useStore = create((set, get) => ({
 
   async autoSelectAndPlay(sources, vodId, flagName, episodeIndex) {
     set((s) => ({ loading: { ...s.loading, player: true } }))
-    for (const src of sources) {
-      try {
-        const uid = src.uid || src.key
-        const payload = await api.sourceDetail(uid, vodId)
-        const source = get().sources.find((s) => s.uid === uid) || src
-        const detail = normalizeDetail(payload, source)
-        if (!detail) continue
-        const group = detail.playGroups.find((g) => g.flag === flagName) || detail.playGroups[0]
-        if (!group?.episodes?.length) continue
-        const epIdx = Math.min(episodeIndex || 0, group.episodes.length - 1)
-        const episode = group.episodes[epIdx]
-        let playUrl = episode.id || episode.url
+    let lastError = null
+    try {
+      for (const src of sources) {
         try {
-          const playPayload = await api.sourcePlay(uid, group.flag, episode.id || episode.url)
-          playUrl = buildPlayableUrl(playPayload, episode.id || episode.url)
-        } catch {}
-        const playback = { sourceUid: uid, vodId, title: detail.name, poster: detail.pic, flagName: group.flag, episodeIndex: epIdx, episodeName: episode.name, url: playUrl, detail }
-        set({ currentPlayback: playback, currentDetail: detail })
-        get().upsertHistory(playback)
-        return playback
-      } catch { continue }
+          const uid = src.uid || src.key
+          const payload = await api.sourceDetail(uid, vodId)
+          const source = get().sources.find((s) => s.uid === uid) || src
+          const detail = normalizeDetail(payload, source)
+          if (!detail) continue
+          const group = detail.playGroups.find((g) => g.flag === flagName) || detail.playGroups[0]
+          if (!group?.episodes?.length) continue
+          const epIdx = Math.min(episodeIndex || 0, group.episodes.length - 1)
+          const episode = group.episodes[epIdx]
+          const episodeId = episode.id || episode.url
+          const playUrl = await resolvePlaybackUrl(() => api.sourcePlay(uid, group.flag, episodeId), episodeId)
+          const playback = { sourceUid: uid, vodId, title: detail.name, poster: detail.pic, flagName: group.flag, episodeIndex: epIdx, episodeName: episode.name, url: playUrl, detail }
+          set({ currentPlayback: playback, currentDetail: detail })
+          get().upsertHistory(playback)
+          return playback
+        } catch (err) {
+          lastError = err
+        }
+      }
+      throw lastError || new Error('没有可用的播放源')
+    } finally {
+      set((s) => ({ loading: { ...s.loading, player: false } }))
     }
-    set((s) => ({ loading: { ...s.loading, player: false } }))
-    return null
   },
 
   upsertHistory(entry) {

@@ -27,7 +27,11 @@ public class TvboxFacadeService {
     private final ConfigService configService;
     private final HttpSourceService httpSourceService;
     private final JarSpiderService jarSpiderService;
-    private final BoundedCache<String, CachedPlayResult> playCache = new BoundedCache<>(512);
+    private final BoundedCache<PlayCacheKey, CachedPlayResult> playCache = new BoundedCache<>(512);
+
+    // 每次加载配置都会创建新的站点实例，避免复用 s0、s1 等 UID 时命中旧配置缓存。
+    private record PlayCacheKey(String sessionId, SiteDefinition site, String flag, String id) {
+    }
 
     private static class CachedPlayResult {
         final JsonNode result;
@@ -380,20 +384,20 @@ public class TvboxFacadeService {
     }
 
     public JsonNode play(String sessionId, String key, String flag, String id) {
-        String cacheKey = key + "::" + flag + "::" + id;
+        SiteDefinition site = getSite(sessionId, key);
+        PlayCacheKey cacheKey = new PlayCacheKey(sessionId, site, flag, id);
         CachedPlayResult cached = playCache.get(cacheKey);
         if (cached != null && !cached.isExpired()) {
             log.info("[PLAY] cache hit for key={} flag={} id={}", key, flag, id);
             return cached.result;
         }
 
-        SiteDefinition site = getSite(sessionId, key);
-        String normalizedId = sanitizePlayableUrl(id);
         JsonNode result;
         if (site.getType() == 3) {
             List<String> vipFlags = getConfig(sessionId).getFlags();
-            result = jarSpiderService.play(sessionId, site, flag, normalizedId, vipFlags);
+            result = jarSpiderService.play(sessionId, site, flag, id, vipFlags);
         } else {
+            String normalizedId = sanitizePlayableUrl(id);
             JsonNode response = httpSourceService.request(site, mapOf("play", normalizedId, "flag", flag));
             ObjectNode node;
             if (response.isObject()) {
@@ -413,7 +417,9 @@ public class TvboxFacadeService {
             result = node;
         }
 
-        playCache.put(cacheKey, new CachedPlayResult(result));
+        if (result != null && result.hasNonNull("url") && StringUtils.hasText(result.get("url").asText())) {
+            playCache.put(cacheKey, new CachedPlayResult(result));
+        }
         return result;
     }
 

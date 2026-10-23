@@ -366,27 +366,15 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
     }
 
     public JsonNode play(String sessionId, SiteDefinition site, String flag, String id, List<String> vipFlags) {
-        String normalizedId = sanitizePlayableUrl(id);
+        // Spider 的 ID 可能包含令牌、线路等字段，只有插件返回的 URL 才能清洗。
         if (scriptSpiderService.supports(site)) {
-            return scriptSpiderService.play(site, flag, normalizedId, vipFlags);
+            return scriptSpiderService.play(site, flag, id, vipFlags);
         }
         JsonNode node = executeWithFallback(site,
-                () -> executeSpiderOperation(sessionId, site, "play", spider -> readJson(invokePlayerContent(spider, flag, normalizedId, vipFlags))),
-                () -> spiderBridgeService.play(site, flag, normalizedId, vipFlags),
+                () -> executeSpiderOperation(sessionId, site, "play", spider -> readJson(invokePlayerContent(spider, flag, id, vipFlags))),
+                () -> spiderBridgeService.play(site, flag, id, vipFlags),
                 true);
-        if (node != null && node.isObject()) {
-            ObjectNode obj = (ObjectNode) node;
-            if (!obj.has("flag")) {
-                obj.put("flag", flag);
-            }
-            if (!obj.has("key")) {
-                obj.put("key", normalizedId);
-            }
-            if (obj.has("url") && obj.get("url").isTextual()) {
-                obj.put("url", sanitizePlayableUrl(obj.get("url").asText()));
-            }
-        }
-        return finalizePlayNode(site, node, flag, normalizedId);
+        return finalizePlayNode(site, node, flag, id);
     }
 
     public JsonNode play(SiteDefinition site, String flag, String id, List<String> vipFlags) {
@@ -394,27 +382,14 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
     }
 
     public JsonNode playLocal(SiteDefinition site, String flag, String id, List<String> vipFlags) {
-        String normalizedId = sanitizePlayableUrl(id);
         if (scriptSpiderService.supports(site)) {
-            return scriptSpiderService.play(site, flag, normalizedId, vipFlags);
+            return scriptSpiderService.play(site, flag, id, vipFlags);
         }
         JsonNode node = executeWithFallback(site,
-                () -> executeSpiderOperation(null, site, "play", spider -> readJson(invokePlayerContent(spider, flag, normalizedId, vipFlags))),
+                () -> executeSpiderOperation(null, site, "play", spider -> readJson(invokePlayerContent(spider, flag, id, vipFlags))),
                 () -> null,
                 false);
-        if (node != null && node.isObject()) {
-            ObjectNode obj = (ObjectNode) node;
-            if (!obj.has("flag")) {
-                obj.put("flag", flag);
-            }
-            if (!obj.has("key")) {
-                obj.put("key", normalizedId);
-            }
-            if (obj.has("url") && obj.get("url").isTextual()) {
-                obj.put("url", sanitizePlayableUrl(obj.get("url").asText()));
-            }
-        }
-        return finalizePlayNode(site, node, flag, normalizedId);
+        return finalizePlayNode(site, node, flag, id);
     }
 
     private JsonNode executeWithFallback(SiteDefinition site, Supplier<JsonNode> localExecutor, Supplier<JsonNode> bridgeExecutor, boolean allowBridgeFallback) {
@@ -451,9 +426,10 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
         if (node == null || !node.isObject()) return true;
         boolean hasClass = node.has("class") && node.get("class").isArray() && node.get("class").size() > 0;
         boolean hasList = node.has("list") && node.get("list").isArray() && node.get("list").size() > 0;
+        boolean hasPlayTarget = hasUsablePlayTarget((ObjectNode) node);
         // Also check for _bridge_raw or raw (non-JSON responses wrapped as objects)
         boolean isRaw = node.has("_bridge_raw") || (node.has("raw") && !node.has("list") && !node.has("class"));
-        return !hasClass && !hasList && !isRaw;
+        return !hasClass && !hasList && !isRaw && !hasPlayTarget;
     }
 
     private <T> T executeSpiderOperation(String sessionId, SiteDefinition site, String operationName, Function<Object, T> operation) {
