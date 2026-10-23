@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tvbox.web.model.ConfigPayload;
 import com.tvbox.web.model.SiteDefinition;
 import jakarta.annotation.PostConstruct;
+import okhttp3.HttpUrl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -218,17 +219,22 @@ public class ConfigService {
 
         String fetchUrl = normalizeHttpLikeUrl(configUrl);
         if (fetchUrl.startsWith(CLAN_PREFIX)) {
-            fetchUrl = clanToAddress(fetchUrl);
+            fetchUrl = normalizeHttpLikeUrl(clanToAddress(fetchUrl));
         }
         return new ResolvedConfigTarget(original, fetchUrl, configKey);
     }
 
     private String normalizeHttpLikeUrl(String rawUrl) {
         String url = rawUrl.trim();
-        if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith(CLAN_PREFIX)) {
+        if (url.startsWith(CLAN_PREFIX)) {
             return url;
         }
-        return "http://" + url;
+        if (!url.regionMatches(true, 0, "http://", 0, 7)
+                && !url.regionMatches(true, 0, "https://", 0, 8)) {
+            url = "http://" + url;
+        }
+        // 复用已有解析器转换中文域名，并保留现有百分号编码，避免破坏路径和签名参数。
+        return HttpUrl.get(url).uri().toASCIIString();
     }
 
     private String decodeWrappedIfNeeded(String content, String configKey) {
