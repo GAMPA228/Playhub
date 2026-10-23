@@ -7,6 +7,10 @@ import {
 
 const HISTORY_KEY = 'playhub:history'
 const SETTINGS_KEY = 'playhub:settings'
+const DEFAULT_SETTINGS = {
+  theme: 'light', searchScope: 'all', liveSourceUrl: '', liveEpgUrl: '',
+  aiEnabled: false, aiUrl: '', aiKey: '', aiModel: '',
+}
 const CONFIG_HISTORY_KEY = 'playhub:config-history'
 const SEARCH_HISTORY_KEY = 'playhub:search-history'
 const MAX_HISTORY = 120
@@ -149,10 +153,7 @@ export const useStore = create((set, get) => ({
   currentLiveSourceIndex: 0,
   liveSummary: null,
 
-  settings: loadLS(SETTINGS_KEY, {
-    searchScope: 'all', liveSourceUrl: '', liveEpgUrl: '',
-    aiEnabled: false, aiUrl: '', aiKey: '', aiModel: '',
-  }),
+  settings: { ...DEFAULT_SETTINGS, ...loadLS(SETTINGS_KEY, {}) },
 
   loading: { config: false, wall: false, detail: false, player: false },
 
@@ -162,10 +163,7 @@ export const useStore = create((set, get) => ({
 
   async bootstrap() {
     try {
-      const settings = loadLS(SETTINGS_KEY, {
-        searchScope: 'all', liveSourceUrl: '', liveEpgUrl: '',
-        aiEnabled: false, aiUrl: '', aiKey: '', aiModel: '',
-      })
+      const settings = { ...DEFAULT_SETTINGS, ...loadLS(SETTINGS_KEY, {}) }
       const configUrl = localStorage.getItem('playhub:configUrl') || ''
       const selectedSourceUid = localStorage.getItem('playhub:selectedSourceUid') || ''
       set({ settings, configUrl, selectedSourceUid, bootstrapped: true })

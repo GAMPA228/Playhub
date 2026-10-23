@@ -14,7 +14,7 @@ import { useStore } from '../stores/useStore'
 import SettingsDrawer from './SettingsDrawer'
 
 const { Sider, Content, Header } = Layout
-const { Text } = Typography
+const { Text, Title } = Typography
 
 const navItems = [
   { key: '/', icon: <HomeOutlined />, label: '首页' },
@@ -57,7 +57,7 @@ export default function AppLayout({ children }) {
 
   if (error) {
     return (
-      <Layout style={{ minHeight: '100vh', background: '#f5f8ff' }}>
+      <Layout style={{ minHeight: '100vh', background: 'var(--color-bg)' }}>
         <Content style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ textAlign: 'center', padding: 40 }}>
             <Title level={3} style={{ color: '#ff4d4f' }}>加载出错</Title>
@@ -78,8 +78,8 @@ export default function AppLayout({ children }) {
           collapsedWidth={72}
           collapsed={collapsed}
           style={{
-            background: '#fff',
-            borderRight: '1px solid #f0f0f0',
+            background: 'var(--color-bg-container)',
+            borderRight: '1px solid var(--color-border-light)',
             position: 'fixed',
             left: 0,
             top: 0,
@@ -92,7 +92,7 @@ export default function AppLayout({ children }) {
           <div
             style={{
               padding: collapsed ? '20px 12px' : '20px 20px',
-              borderBottom: '1px solid #f0f0f0',
+              borderBottom: '1px solid var(--color-border-light)',
               display: 'flex',
               alignItems: 'center',
               gap: 12,
@@ -116,7 +116,7 @@ export default function AppLayout({ children }) {
               <PlayCircleOutlined style={{ color: '#fff', fontSize: 20 }} />
             </div>
             {!collapsed && (
-              <Text strong style={{ fontSize: 18, color: '#1a1a2e', letterSpacing: -0.5 }}>
+              <Text strong style={{ fontSize: 18, color: 'var(--color-text)', letterSpacing: -0.5 }}>
                 PlayHub
               </Text>
             )}
@@ -132,7 +132,7 @@ export default function AppLayout({ children }) {
             />
           </div>
 
-          <div style={{ padding: '12px 8px', borderTop: '1px solid #f0f0f0' }}>
+          <div style={{ padding: '12px 8px', borderTop: '1px solid var(--color-border-light)' }}>
             <Space direction="vertical" style={{ width: '100%' }} size={4}>
               <Button
                 type="text"
@@ -175,8 +175,8 @@ export default function AppLayout({ children }) {
         {mobile && (
           <Header
             style={{
-              background: '#fff',
-              borderBottom: '1px solid #f0f0f0',
+              background: 'var(--color-bg-container)',
+              borderBottom: '1px solid var(--color-border-light)',
               padding: '0 16px',
               display: 'flex',
               alignItems: 'center',
@@ -227,8 +227,8 @@ export default function AppLayout({ children }) {
                 width: 28,
                 height: 28,
                 borderRadius: 8,
-                background: '#fff',
-                border: '1px solid #f0f0f0',
+                background: 'var(--color-bg-container)',
+                border: '1px solid var(--color-border-light)',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
               }}
             />
@@ -246,8 +246,8 @@ export default function AppLayout({ children }) {
               bottom: 0,
               left: 0,
               right: 0,
-              background: '#fff',
-              borderTop: '1px solid #f0f0f0',
+              background: 'var(--color-bg-container)',
+              borderTop: '1px solid var(--color-border-light)',
               display: 'flex',
               justifyContent: 'space-around',
               padding: '6px 0',
@@ -266,8 +266,8 @@ export default function AppLayout({ children }) {
                   padding: '4px 12px',
                   borderRadius: 8,
                   cursor: 'pointer',
-                  color: location.pathname === item.key ? '#1677ff' : '#6b7280',
-                  background: location.pathname === item.key ? '#e6f4ff' : 'transparent',
+                  color: location.pathname === item.key ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                  background: location.pathname === item.key ? 'var(--color-primary-bg)' : 'transparent',
                   transition: 'all 0.2s ease',
                 }}
               >

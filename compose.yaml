@@ -1,0 +1,16 @@
+services:
+  playhub:
+    build: .
+    image: playhub:local
+    restart: unless-stopped
+    ports:
+      - "18080:18080"
+    volumes:
+      - playhub-data:/opt/playhub/data
+      - playhub-logs:/opt/playhub/logs
+      - playhub-android-cache:/opt/playhub/.cache
+
+volumes:
+  playhub-data:
+  playhub-logs:
+  playhub-android-cache:

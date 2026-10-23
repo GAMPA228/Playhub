@@ -44,11 +44,11 @@ export default function HistoryView() {
     >
       <div
         style={{
-          background: '#fff',
+          background: 'var(--color-bg-container)',
           borderRadius: 20,
           padding: '28px 32px',
           marginBottom: 24,
-          border: '1px solid #f0f0f0',
+          border: '1px solid var(--color-border-light)',
           boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
           display: 'flex',
           alignItems: 'center',
@@ -105,8 +105,8 @@ export default function HistoryView() {
                 style={{
                   borderRadius: 16,
                   overflow: 'hidden',
-                  background: '#fff',
-                  border: '1px solid #f0f0f0',
+                  background: 'var(--color-bg-container)',
+                  border: '1px solid var(--color-border-light)',
                   transition: 'all 0.25s ease',
                 }}
                 className="video-card"
@@ -132,13 +132,13 @@ export default function HistoryView() {
                     style={{
                       width: '100%',
                       aspectRatio: '2/3',
-                      background: 'linear-gradient(135deg, #e6f4ff, #f0f5ff)',
+                      background: 'var(--color-placeholder-gradient)',
                       display: entry.poster ? 'none' : 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <PlayCircleOutlined style={{ fontSize: 40, color: '#91caff' }} />
+                    <PlayCircleOutlined style={{ fontSize: 40, color: 'var(--color-primary-border)' }} />
                   </div>
                   {entry.episodeName && (
                     <span className="remarks-badge">

@@ -240,14 +240,14 @@ export default function DetailView() {
       <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={handleBack} style={{ marginBottom: 16 }}>返回</Button>
 
-        <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', border: '1px solid #f0f0f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+        <div style={{ background: 'var(--color-bg-container)', borderRadius: 20, overflow: 'hidden', border: '1px solid var(--color-border-light)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
           <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap' }}>
-            <div style={{ width: 280, minHeight: 400, position: 'relative', overflow: 'hidden', flexShrink: 0, background: '#f5f5f5' }}>
+            <div style={{ width: 280, minHeight: 400, position: 'relative', overflow: 'hidden', flexShrink: 0, background: 'var(--color-bg-muted)' }}>
               {(wallVideo?.pic || groupDetail?.pic || historyEntry?.poster) ? (
                 <img src={wallVideo?.pic || groupDetail?.pic || historyEntry?.poster} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={(e) => { e.target.style.display = 'none' }} />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <PlayCircleOutlined style={{ fontSize: 48, color: '#d9d9d9' }} />
+                  <PlayCircleOutlined style={{ fontSize: 48, color: 'var(--color-text-tertiary)' }} />
                 </div>
               )}
               {groupSources.length > 1 && (
@@ -280,17 +280,17 @@ export default function DetailView() {
               )}
 
               {groupLoading && !aiDetailProcessing && (
-                <div style={{ padding: '14px 18px', background: '#e6f4ff', borderRadius: 12, border: '1px solid #91caff', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ padding: '14px 18px', background: 'var(--color-primary-bg)', borderRadius: 12, border: '1px solid var(--color-primary-border)', display: 'flex', alignItems: 'center', gap: 12 }}>
                   <Spin size="small" />
                   <div style={{ flex: 1 }}>
                     <Text style={{ fontWeight: 500 }}>正在获取源信息 {fetchProgress.done}/{fetchProgress.total}...</Text>
-                    {fetchProgress.total > 0 && <Progress percent={Math.round((fetchProgress.done / fetchProgress.total) * 100)} size="small" strokeColor="#1677ff" showInfo={false} style={{ marginTop: 4 }} />}
+                    {fetchProgress.total > 0 && <Progress percent={Math.round((fetchProgress.done / fetchProgress.total) * 100)} size="small" strokeColor="var(--color-primary)" showInfo={false} style={{ marginTop: 4 }} />}
                   </div>
                 </div>
               )}
 
               {aiDetailProcessing && (
-                <div className="rainbow-border" style={{ padding: '14px 18px', background: '#fff', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div className="rainbow-border" style={{ padding: '14px 18px', background: 'var(--color-bg-container)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
                   <Spin size="small" />
                   <span className="rainbow-text" style={{ fontWeight: 600, fontSize: 14 }}>AI 正在整合视频详情...</span>
                 </div>
@@ -380,7 +380,7 @@ export default function DetailView() {
     return (
       <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={handleBack} style={{ marginBottom: 16 }}>返回</Button>
-        <Empty description={loadError || '未找到视频信息'} style={{ padding: '80px 0', background: '#fff', borderRadius: 20 }}>
+        <Empty description={loadError || '未找到视频信息'} style={{ padding: '80px 0', background: 'var(--color-bg-container)', borderRadius: 20 }}>
           <Space>
             <Button type="primary" onClick={() => navigate('/')}>返回首页</Button>
             <Button icon={<ReloadOutlined />} onClick={handleRetry}>重试</Button>
@@ -398,14 +398,14 @@ export default function DetailView() {
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
       <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} style={{ marginBottom: 16 }}>返回</Button>
 
-      <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', border: '1px solid #f0f0f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+      <div style={{ background: 'var(--color-bg-container)', borderRadius: 20, overflow: 'hidden', border: '1px solid var(--color-border-light)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
         <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap' }}>
-          <div style={{ width: 280, minHeight: 400, position: 'relative', overflow: 'hidden', flexShrink: 0, background: '#f5f5f5' }}>
+          <div style={{ width: 280, minHeight: 400, position: 'relative', overflow: 'hidden', flexShrink: 0, background: 'var(--color-bg-muted)' }}>
             {detail.pic ? (
               <img src={detail.pic} alt={detail.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <PlayCircleOutlined style={{ fontSize: 48, color: '#d9d9d9' }} />
+                <PlayCircleOutlined style={{ fontSize: 48, color: 'var(--color-text-tertiary)' }} />
               </div>
             )}
           </div>

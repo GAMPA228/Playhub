@@ -54,13 +54,13 @@ export default function VideoCard({ video, onClick, style, index = 0 }) {
               />
             ) : null}
             {!loaded && !error && (
-              <div style={{ width: '100%', aspectRatio: '2/3', background: '#f5f5f5' }}>
+              <div style={{ width: '100%', aspectRatio: '2/3', background: 'var(--color-bg-muted)' }}>
                 <div className="skeleton-shimmer" style={{ width: '100%', height: '100%' }} />
               </div>
             )}
             {error && (
-              <div style={{ width: '100%', aspectRatio: '2/3', background: 'linear-gradient(135deg, #e6f4ff, #f0f5ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
-                <PlayCircleOutlined style={{ fontSize: 32, color: '#91caff' }} />
+              <div style={{ width: '100%', aspectRatio: '2/3', background: 'var(--color-placeholder-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
+                <PlayCircleOutlined style={{ fontSize: 32, color: 'var(--color-primary-border)' }} />
                 <Text type="secondary" style={{ fontSize: 12 }}>暂无封面</Text>
               </div>
             )}
@@ -83,7 +83,7 @@ export default function VideoCard({ video, onClick, style, index = 0 }) {
           </div>
         }
         styles={{ body: { padding: '12px 16px', borderRadius: '0 0 16px 16px' } }}
-        style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #f0f0f0' }}
+        style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--color-border-light)' }}
       >
         <Text strong ellipsis={{ tooltip: video.name }} style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
           {video.name}

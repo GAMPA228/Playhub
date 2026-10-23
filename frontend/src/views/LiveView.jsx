@@ -125,9 +125,9 @@ export default function LiveView() {
   if (!settings.liveSourceUrl) {
     return (
       <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
-        <div style={{ background: '#fff', borderRadius: 20, padding: '60px 32px', textAlign: 'center', border: '1px solid #f0f0f0' }}>
-          <VideoCameraOutlined style={{ fontSize: 48, color: '#d9d9d9', marginBottom: 16 }} />
-          <Title level={4} style={{ color: '#999' }}>未配置直播源</Title>
+        <div style={{ background: 'var(--color-bg-container)', borderRadius: 20, padding: '60px 32px', textAlign: 'center', border: '1px solid var(--color-border-light)' }}>
+          <VideoCameraOutlined style={{ fontSize: 48, color: 'var(--color-text-tertiary)', marginBottom: 16 }} />
+          <Title level={4} style={{ color: 'var(--color-text-tertiary)' }}>未配置直播源</Title>
           <Text type="secondary">请在设置中添加 M3U 直播源地址</Text>
         </div>
       </motion.div>
@@ -136,9 +136,9 @@ export default function LiveView() {
 
   return (
     <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
-      <div style={{ background: '#fff', borderRadius: 20, padding: '20px 24px', marginBottom: 20, border: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ background: 'var(--color-bg-container)', borderRadius: 20, padding: '20px 24px', marginBottom: 20, border: '1px solid var(--color-border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <VideoCameraOutlined style={{ fontSize: 24, color: '#1677ff' }} />
+          <VideoCameraOutlined style={{ fontSize: 24, color: 'var(--color-primary)' }} />
           <div>
             <Title level={4} style={{ margin: 0 }}>电视直播</Title>
             <Text type="secondary" style={{ fontSize: 13 }}>{liveChannels.length} 个频道 · {liveGroups.length} 个分组</Text>
@@ -148,15 +148,15 @@ export default function LiveView() {
       </div>
 
       {loading && liveChannels.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '80px 0' }}><Spin size="large" /><Text style={{ display: 'block', marginTop: 16, color: '#999' }}>加载中...</Text></div>
+        <div style={{ textAlign: 'center', padding: '80px 0' }}><Spin size="large" /><Text style={{ display: 'block', marginTop: 16, color: 'var(--color-text-tertiary)' }}>加载中...</Text></div>
       ) : liveChannels.length === 0 ? (
         <Empty description="暂无频道" />
       ) : (
         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
           {/* Channel List */}
-          <div style={{ flex: '0 0 300px', background: '#fff', borderRadius: 16, border: '1px solid #f0f0f0', overflow: 'hidden', maxHeight: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: '0 0 300px', background: 'var(--color-bg-container)', borderRadius: 16, border: '1px solid var(--color-border-light)', overflow: 'hidden', maxHeight: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
             {liveGroups.length > 0 && (
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border-light)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 <Tag color={!selectedGroup ? 'blue' : 'default'} style={{ cursor: 'pointer', borderRadius: 6 }} onClick={() => setSelectedGroup('')}>全部</Tag>
                 {liveGroups.map((g) => (
                   <Tag key={g.name} color={selectedGroup === g.name ? 'blue' : 'default'} style={{ cursor: 'pointer', borderRadius: 6 }} onClick={() => setSelectedGroup(g.name)}>{g.name} ({g.count})</Tag>
@@ -167,12 +167,12 @@ export default function LiveView() {
               {filteredChannels.map((ch) => {
                 const prog = getCurrentProgramme(ch.programmes)
                 return (
-                  <div key={ch.id} onClick={() => store.selectLiveChannel(ch.id)} style={{ padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f0f0f0', background: currentLiveChannelId === ch.id ? '#e6f4ff' : 'transparent', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: currentLiveChannelId === ch.id ? '#1677ff' : '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <SoundOutlined style={{ fontSize: 16, color: currentLiveChannelId === ch.id ? '#fff' : '#999' }} />
+                  <div key={ch.id} onClick={() => store.selectLiveChannel(ch.id)} style={{ padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid var(--color-border-light)', background: currentLiveChannelId === ch.id ? 'var(--color-primary-bg)' : 'transparent', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: currentLiveChannelId === ch.id ? 'var(--color-primary)' : 'var(--color-bg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <SoundOutlined style={{ fontSize: 16, color: currentLiveChannelId === ch.id ? '#fff' : 'var(--color-text-tertiary)' }} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <Text strong={currentLiveChannelId === ch.id} style={{ display: 'block', color: currentLiveChannelId === ch.id ? '#1677ff' : '#333', fontSize: 14 }}>{ch.name}</Text>
+                      <Text strong={currentLiveChannelId === ch.id} style={{ display: 'block', color: currentLiveChannelId === ch.id ? 'var(--color-primary)' : 'var(--color-text)', fontSize: 14 }}>{ch.name}</Text>
                       <Text type="secondary" style={{ fontSize: 12 }} ellipsis>{ch.group}{ch.sources?.length > 1 && ` · ${ch.sources.length}源`}{prog && ` · ${prog.title}`}</Text>
                     </div>
                   </div>
@@ -186,21 +186,21 @@ export default function LiveView() {
             {currentChannel && currentSource?.url && !playerFailed ? (
               <PlyrPlayer key={`${currentLiveChannelId}-${currentLiveSourceIndex}`} url={currentSource.url} onError={handlePlayerError} onReady={handlePlayerReady} style={{ borderRadius: 16, overflow: 'hidden' }} />
             ) : currentChannel && playerFailed ? (
-              <div style={{ background: '#fff2f0', borderRadius: 16, aspectRatio: '16/9', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, border: '1px solid #ffccc7' }}>
-                <WarningOutlined style={{ fontSize: 40, color: '#ff4d4f' }} />
-                <Text style={{ fontSize: 16, color: '#ff4d4f' }}>所有源均无法播放</Text>
+              <div style={{ background: 'var(--color-error-bg)', borderRadius: 16, aspectRatio: '16/9', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, border: '1px solid var(--color-error-border)' }}>
+                <WarningOutlined style={{ fontSize: 40, color: 'var(--color-error)' }} />
+                <Text style={{ fontSize: 16, color: 'var(--color-error)' }}>所有源均无法播放</Text>
                 <Button onClick={() => { setPlayerFailed(false); store.selectLiveSource(0) }}>重试</Button>
               </div>
             ) : (
-              <div style={{ background: '#f5f5f5', borderRadius: 16, aspectRatio: '16/9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ background: 'var(--color-bg-muted)', borderRadius: 16, aspectRatio: '16/9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Empty description="选择频道开始观看" />
               </div>
             )}
 
             {/* Source Switcher */}
             {currentChannel && currentChannel.sources?.length > 1 && (
-              <div style={{ background: '#fff', borderRadius: 12, marginTop: 12, padding: '12px 16px', border: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <Text style={{ fontSize: 13, color: '#666', marginRight: 4 }}>频道源:</Text>
+              <div style={{ background: 'var(--color-bg-container)', borderRadius: 12, marginTop: 12, padding: '12px 16px', border: '1px solid var(--color-border-light)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Text style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginRight: 4 }}>频道源:</Text>
                 {currentChannel.sources.map((src, i) => (
                   <Button key={i} type={currentLiveSourceIndex === i ? 'primary' : 'default'} size="small" onClick={() => { store.selectLiveSource(i); setPlayerFailed(false) }} style={{ borderRadius: 6 }}>
                     {src.label || `源${i + 1}`}
@@ -212,29 +212,29 @@ export default function LiveView() {
 
             {/* Now Playing */}
             {currentChannel && (
-              <div style={{ background: '#fff', borderRadius: 16, marginTop: 12, padding: '16px 20px', border: '1px solid #f0f0f0' }}>
+              <div style={{ background: 'var(--color-bg-container)', borderRadius: 16, marginTop: 12, padding: '16px 20px', border: '1px solid var(--color-border-light)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <Title level={5} style={{ margin: 0 }}>{currentChannel.name}</Title>
                   <Tag color="blue">{currentChannel.group}</Tag>
                 </div>
 
                 {currentProgramme && (
-                  <div style={{ marginBottom: 12, padding: '10px 14px', background: '#f6ffed', borderRadius: 10, border: '1px solid #b7eb8f' }}>
+                  <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--color-success-bg)', borderRadius: 10, border: '1px solid var(--color-success-border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <Text style={{ fontSize: 14, color: '#52c41a', fontWeight: 600 }}>
+                      <Text style={{ fontSize: 14, color: 'var(--color-success)', fontWeight: 600 }}>
                         <ClockCircleOutlined style={{ marginRight: 6 }} />
                         {currentProgramme.title}
                       </Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>{formatClock(currentProgramme.start)} - {formatClock(currentProgramme.end)}</Text>
                     </div>
-                    <Progress percent={progressPercent} strokeColor="#52c41a" size="small" showInfo={false} />
+                    <Progress percent={progressPercent} strokeColor="var(--color-success)" size="small" showInfo={false} />
                     {currentProgramme.desc && <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 6 }}>{currentProgramme.desc}</Text>}
                   </div>
                 )}
 
                 {nextProgramme && (
-                  <div style={{ padding: '8px 12px', background: '#f0f5ff', borderRadius: 8, marginBottom: 12 }}>
-                    <Text style={{ fontSize: 13, color: '#1677ff' }}>下一档: {nextProgramme.title}</Text>
+                  <div style={{ padding: '8px 12px', background: 'var(--color-primary-bg)', borderRadius: 8, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 13, color: 'var(--color-primary)' }}>下一档: {nextProgramme.title}</Text>
                     <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>{formatClock(nextProgramme.start)} - {formatClock(nextProgramme.end)}</Text>
                   </div>
                 )}
@@ -243,7 +243,7 @@ export default function LiveView() {
 
             {/* EPG Timeline */}
             {visibleProgrammes.length > 0 && (
-              <div style={{ background: '#fff', borderRadius: 16, marginTop: 12, padding: '16px 20px', border: '1px solid #f0f0f0' }}>
+              <div style={{ background: 'var(--color-bg-container)', borderRadius: 16, marginTop: 12, padding: '16px 20px', border: '1px solid var(--color-border-light)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <Title level={5} style={{ margin: 0 }}>节目单</Title>
                   <Tag color={settings.liveEpgUrl ? 'green' : 'default'}>{settings.liveEpgUrl ? 'EPG 已接入' : '未配置 EPG'}</Tag>
@@ -252,13 +252,13 @@ export default function LiveView() {
                   {visibleProgrammes.map((p, i) => {
                     const state = programmeState(p)
                     return (
-                      <div key={i} style={{ display: 'flex', gap: 12, padding: '10px 12px', borderRadius: 10, background: state === 'live' ? '#f6ffed' : state === 'upcoming' ? '#f0f5ff' : '#fafafa', border: state === 'live' ? '1px solid #b7eb8f' : '1px solid transparent' }}>
+                      <div key={i} style={{ display: 'flex', gap: 12, padding: '10px 12px', borderRadius: 10, background: state === 'live' ? 'var(--color-success-bg)' : state === 'upcoming' ? 'var(--color-primary-bg)' : 'var(--color-bg-muted)', border: state === 'live' ? '1px solid var(--color-success-border)' : '1px solid transparent' }}>
                         <div style={{ width: 100, flexShrink: 0, textAlign: 'right' }}>
-                          <Text strong style={{ fontSize: 13, color: state === 'live' ? '#52c41a' : state === 'upcoming' ? '#1677ff' : '#999' }}>{formatClock(p.start)}</Text>
+                          <Text strong style={{ fontSize: 13, color: state === 'live' ? 'var(--color-success)' : state === 'upcoming' ? 'var(--color-primary)' : 'var(--color-text-tertiary)' }}>{formatClock(p.start)}</Text>
                           <Text type="secondary" style={{ display: 'block', fontSize: 11 }}>{formatClock(p.end)}</Text>
                         </div>
                         <div style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 13, fontWeight: state === 'live' ? 600 : 400, color: state === 'live' ? '#52c41a' : state === 'upcoming' ? '#1677ff' : '#666' }}>{p.title}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: state === 'live' ? 600 : 400, color: state === 'live' ? 'var(--color-success)' : state === 'upcoming' ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}>{p.title}</Text>
                           {p.desc && <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 2 }} ellipsis>{p.desc}</Text>}
                         </div>
                         <Tag color={state === 'live' ? 'success' : state === 'upcoming' ? 'processing' : 'default'} style={{ flexShrink: 0, borderRadius: 4, fontSize: 11 }}>

@@ -7,23 +7,37 @@
 }
 
 :root {
+  color-scheme: light;
   --color-primary: #1677ff;
   --color-primary-light: #4096ff;
   --color-primary-dark: #0958d9;
   --color-primary-bg: #e6f4ff;
   --color-primary-bg-hover: #bae0ff;
+  --color-primary-border: #91caff;
   --color-success: #52c41a;
   --color-warning: #faad14;
   --color-error: #ff4d4f;
   --color-bg: #f5f8ff;
   --color-bg-container: #ffffff;
   --color-bg-elevated: #ffffff;
+  --color-bg-muted: #f5f5f5;
   --color-text: #1a1a2e;
   --color-text-secondary: #6b7280;
   --color-text-tertiary: #9ca3af;
   --color-border: #e5e7eb;
   --color-border-light: #f0f0f0;
   --color-shadow: rgba(0, 0, 0, 0.06);
+  --color-success-bg: #f6ffed;
+  --color-success-border: #b7eb8f;
+  --color-error-bg: #fff2f0;
+  --color-error-border: #ffccc7;
+  --color-placeholder-gradient: linear-gradient(135deg, #e6f4ff, #f0f5ff);
+  --color-glass-bg: rgba(255, 255, 255, 0.85);
+  --color-glass-border: rgba(255, 255, 255, 0.6);
+  --color-hero-gradient: linear-gradient(135deg, #e6f4ff 0%, #f0f5ff 50%, #fff1f0 100%);
+  --color-skeleton: #f0f0f0;
+  --color-skeleton-highlight: #e8e8e8;
+  --color-scrollbar: #d1d5db;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -33,6 +47,40 @@
   --transition-fast: 0.15s ease;
   --transition-normal: 0.25s ease;
   --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-primary: #69b1ff;
+  --color-primary-light: #91caff;
+  --color-primary-dark: #4096ff;
+  --color-primary-bg: #162c48;
+  --color-primary-bg-hover: #1d3e64;
+  --color-primary-border: #315984;
+  --color-success: #73d13d;
+  --color-warning: #ffc53d;
+  --color-error: #ff7875;
+  --color-bg: #10141e;
+  --color-bg-container: #1c2230;
+  --color-bg-elevated: #252d3d;
+  --color-bg-muted: #242c3b;
+  --color-text: #e5e7eb;
+  --color-text-secondary: #a4adbd;
+  --color-text-tertiary: #8a96aa;
+  --color-border: #3a4559;
+  --color-border-light: #30394b;
+  --color-shadow: rgba(0, 0, 0, 0.3);
+  --color-success-bg: #1c3426;
+  --color-success-border: #3d6533;
+  --color-error-bg: #3c2229;
+  --color-error-border: #783c43;
+  --color-placeholder-gradient: linear-gradient(135deg, #162c48, #2c2648);
+  --color-glass-bg: rgba(28, 34, 48, 0.85);
+  --color-glass-border: rgba(164, 173, 189, 0.2);
+  --color-hero-gradient: linear-gradient(135deg, #162c48 0%, #242640 50%, #3c2229 100%);
+  --color-skeleton: #242c3b;
+  --color-skeleton-highlight: #344056;
+  --color-scrollbar: #4b5870;
 }
 
 html {
@@ -62,12 +110,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--color-scrollbar);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--color-text-tertiary);
 }
 
 .ant-layout {
@@ -189,14 +237,14 @@ body {
 }
 
 .glass-panel {
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--color-glass-bg);
   backdrop-filter: blur(20px) saturate(1.8);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--color-glass-border);
   border-radius: var(--radius-lg);
 }
 
 .hero-gradient {
-  background: linear-gradient(135deg, #e6f4ff 0%, #f0f5ff 50%, #fff1f0 100%);
+  background: var(--color-hero-gradient);
 }
 
 .text-gradient {
@@ -227,7 +275,7 @@ body {
 }
 
 .skeleton-shimmer {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, var(--color-skeleton) 25%, var(--color-skeleton-highlight) 50%, var(--color-skeleton) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: var(--radius-md);

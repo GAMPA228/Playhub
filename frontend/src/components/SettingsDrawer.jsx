@@ -37,7 +37,7 @@ export default function SettingsDrawer({ onClose }) {
     value: url,
     label: (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <ClockCircleOutlined style={{ color: '#999', fontSize: 12 }} />
+        <ClockCircleOutlined style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }} />
         <Text ellipsis style={{ flex: 1, fontSize: 13 }}>{url}</Text>
       </div>
     ),
@@ -156,6 +156,21 @@ export default function SettingsDrawer({ onClose }) {
 
   return (
     <div>
+      <Title level={5} style={{ marginBottom: 16 }}>外观设置</Title>
+      <Form layout="vertical">
+        <Form.Item label="暗色模式" extra="立即生效，并在当前浏览器中记住你的选择。">
+          <Switch
+            aria-label="暗色模式"
+            checked={store.settings.theme === 'dark'}
+            onChange={(checked) => store.updateSettings({ theme: checked ? 'dark' : 'light' })}
+            checkedChildren="开启"
+            unCheckedChildren="关闭"
+          />
+        </Form.Item>
+      </Form>
+
+      <Divider />
+
       <Title level={5} style={{ marginBottom: 16 }}>数据源配置</Title>
       <Form layout="vertical">
         <Form.Item label="配置地址" style={{ marginBottom: 12 }}>
@@ -177,7 +192,7 @@ export default function SettingsDrawer({ onClose }) {
       {store.configHistory.length > 0 && (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <HistoryOutlined style={{ color: '#999', fontSize: 13 }} />
+            <HistoryOutlined style={{ color: 'var(--color-text-tertiary)', fontSize: 13 }} />
             <Text type="secondary" style={{ fontSize: 13 }}>历史配置</Text>
           </div>
           <List
@@ -185,7 +200,7 @@ export default function SettingsDrawer({ onClose }) {
             dataSource={store.configHistory}
             renderItem={(url) => (
               <List.Item
-                style={{ padding: '8px 12px', borderRadius: 8, marginBottom: 4, background: store.configUrl === url ? '#e6f4ff' : '#fafafa', border: store.configUrl === url ? '1px solid #91caff' : '1px solid #f0f0f0', cursor: 'pointer', transition: 'all 0.2s ease' }}
+                style={{ padding: '8px 12px', borderRadius: 8, marginBottom: 4, background: store.configUrl === url ? 'var(--color-primary-bg)' : 'var(--color-bg-muted)', border: `1px solid ${store.configUrl === url ? 'var(--color-primary-border)' : 'var(--color-border-light)'}`, cursor: 'pointer', transition: 'all 0.2s ease' }}
                 onClick={() => { setConfigInput(url); handleLoadConfig(url) }}
                 actions={[
                   <Popconfirm title="确定删除？" onConfirm={(e) => { e?.stopPropagation(); store.removeConfigHistory(url) }} onCancel={(e) => e?.stopPropagation()}>
@@ -195,7 +210,7 @@ export default function SettingsDrawer({ onClose }) {
               >
                 <List.Item.Meta
                   title={<Text ellipsis style={{ maxWidth: 260, fontSize: 13, fontWeight: store.configUrl === url ? 600 : 400 }}>{url}</Text>}
-                  description={store.configUrl === url ? <Text style={{ fontSize: 11, color: '#52c41a' }}>当前使用</Text> : null}
+                  description={store.configUrl === url ? <Text style={{ fontSize: 11, color: 'var(--color-success)' }}>当前使用</Text> : null}
                 />
               </List.Item>
             )}
@@ -272,12 +287,12 @@ export default function SettingsDrawer({ onClose }) {
                 </Button>
                 {aiTestResult && (
                   aiTestResult.ok ? (
-                    <Text style={{ color: '#52c41a', fontSize: 13 }}>
+                    <Text style={{ color: 'var(--color-success)', fontSize: 13 }}>
                       <CheckCircleOutlined style={{ marginRight: 4 }} />
                       连接成功 {aiTestResult.model && `(${aiTestResult.model})`}
                     </Text>
                   ) : (
-                    <Text style={{ color: '#ff4d4f', fontSize: 13 }}>
+                    <Text style={{ color: 'var(--color-error)', fontSize: 13 }}>
                       <CloseCircleOutlined style={{ marginRight: 4 }} />
                       {aiTestResult.error}
                     </Text>
@@ -320,10 +335,10 @@ export default function SettingsDrawer({ onClose }) {
                 style={{
                   padding: '6px 12px',
                   borderRadius: 8,
-                  background: store.selectedSourceUid === s.uid ? '#e6f4ff' : '#f5f5f5',
-                  border: `1px solid ${store.selectedSourceUid === s.uid ? '#91caff' : '#e8e8e8'}`,
+                  background: store.selectedSourceUid === s.uid ? 'var(--color-primary-bg)' : 'var(--color-bg-muted)',
+                  border: `1px solid ${store.selectedSourceUid === s.uid ? 'var(--color-primary-border)' : 'var(--color-border-light)'}`,
                   fontSize: 13,
-                  color: store.selectedSourceUid === s.uid ? '#1677ff' : '#666',
+                  color: store.selectedSourceUid === s.uid ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                 }}
@@ -369,7 +384,7 @@ export default function SettingsDrawer({ onClose }) {
             />
           </Form.Item>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            导出的配置包含：配置地址、搜索设置、AI 设置、直播设置、历史配置
+            导出的配置包含：配置地址、外观设置、搜索设置、AI 设置、直播设置、历史配置
           </Text>
         </Form>
       </Modal>

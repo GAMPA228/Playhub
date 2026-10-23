@@ -94,6 +94,23 @@ docker run -d --name playhub -p 18080:18080 hurryos/playhub
 
 > 自定义端口：`-p 8080:18080` → 访问 `http://localhost:8080`
 
+### 从本地仓库使用 Docker Compose
+
+在项目根目录执行：
+
+```bash
+# Dockerfile 使用已打包的 JAR，不会自动编译源码
+ls -lh target/playhub-*.jar
+docker compose up -d --build
+docker compose logs -f --tail 100
+```
+
+访问 `http://服务器IP:18080`。如果缺少 JAR 或修改了 Java 源码，先使用 JDK 17 和 Maven 执行 `mvn clean package -DskipTests`；如修改了前端，需先在 `frontend` 目录安装依赖并执行 `npm run build`，再打包 JAR。
+
+Compose 会持久化应用数据、日志和 Android 兼容层缓存，健康检查沿用 Dockerfile。使用 `docker compose down` 停止服务并保留数据，`docker compose down -v` 会删除这些数据卷。
+
+默认开放服务器的 18080 端口，建议通过防火墙限制为可信内网访问，不要直接无鉴权暴露到公网。若仅供本机或本机反向代理访问，将 `compose.yaml` 的端口映射改为 `127.0.0.1:18080:18080`。
+
 ---
 
 ## <img src="https://raw.githubusercontent.com/twitter/twemoji/master/assets/svg/1f4d6.svg" width="24" /> 使用指南

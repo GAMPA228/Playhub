@@ -87,16 +87,16 @@ export default function HomeView() {
     >
       <div
         style={{
-          background: '#fff',
+          background: 'var(--color-bg-container)',
           borderRadius: 20,
           padding: '24px 28px',
           marginBottom: 24,
-          border: '1px solid #f0f0f0',
+          border: '1px solid var(--color-border-light)',
           boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         }}
       >
         <div style={{ marginBottom: 16 }}>
-          <Title level={3} style={{ margin: 0, fontWeight: 700, color: '#1a1a2e' }}>
+          <Title level={3} style={{ margin: 0, fontWeight: 700, color: 'var(--color-text)' }}>
             {wallTitle || '发现'}
           </Title>
         </div>
@@ -107,7 +107,7 @@ export default function HomeView() {
             value: kw,
             label: (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <ClockCircleOutlined style={{ color: '#999', fontSize: 12 }} />
+                <ClockCircleOutlined style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }} />
                 <span>{kw}</span>
               </div>
             ),
@@ -131,9 +131,9 @@ export default function HomeView() {
             style={{
               marginTop: 12,
               padding: '14px 18px',
-              background: '#e6f4ff',
+              background: 'var(--color-primary-bg)',
               borderRadius: 12,
-              border: '1px solid #91caff',
+              border: '1px solid var(--color-primary-border)',
               display: 'flex',
               alignItems: 'center',
               gap: 12,
@@ -152,7 +152,7 @@ export default function HomeView() {
             style={{
               marginTop: 12,
               padding: '14px 18px',
-              background: '#fff',
+              background: 'var(--color-bg-container)',
               borderRadius: 12,
               display: 'flex',
               alignItems: 'center',
@@ -171,14 +171,14 @@ export default function HomeView() {
             style={{
               marginTop: 12,
               padding: '10px 16px',
-              background: '#f0f5ff',
+              background: 'var(--color-primary-bg)',
               borderRadius: 10,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
             }}
           >
-            <Text style={{ fontSize: 13, color: '#1677ff' }}>
+            <Text style={{ fontSize: 13, color: 'var(--color-primary)' }}>
               搜索 "{searchKeyword}" 的结果 · {wallVideos.length} 个视频
             </Text>
             <Button type="link" size="small" onClick={handleClearSearch}>
@@ -224,7 +224,7 @@ export default function HomeView() {
               <Text type="secondary" style={{ fontSize: 13 }}>请在设置中加载 TVBox 配置</Text>
             </span>
           }
-          style={{ padding: '80px 0', background: '#fff', borderRadius: 20, border: '1px solid #f0f0f0' }}
+          style={{ padding: '80px 0', background: 'var(--color-bg-container)', borderRadius: 20, border: '1px solid var(--color-border-light)' }}
         />
       ) : wallVideos.length === 0 ? (
         <Empty
