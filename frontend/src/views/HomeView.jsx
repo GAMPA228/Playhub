@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../stores/useStore'
 import VideoCard from '../components/VideoCard'
+import SourceSelector from '../components/SourceSelector'
 import { classIdOf, classNameOf } from '../utils'
 
 const { Text, Title } = Typography
@@ -57,11 +58,21 @@ export default function HomeView() {
 
   const handleTabChange = useCallback(
     (key) => {
+      const { loading, searchProgress } = useStore.getState()
+      if (loading.wall || loading.config || searchProgress.active || searchProgress.aiProcessing) return
       if (key === '__home__') {
         store.loadHome()
       } else {
         store.loadCategory(key)
       }
+    },
+    [store]
+  )
+
+  const handleSourceSelect = useCallback(
+    (uid) => {
+      setSearchValue('')
+      store.selectSource(uid)
     },
     [store]
   )
@@ -101,6 +112,15 @@ export default function HomeView() {
           </Title>
         </div>
 
+        {sources.length > 0 && (
+          <SourceSelector
+            sources={sources}
+            selectedSourceUid={store.getSelectedSource()?.uid || ''}
+            onSelect={handleSourceSelect}
+            disabled={loading.wall || loading.config || searchProgress.active || searchProgress.aiProcessing}
+          />
+        )}
+
         <AutoComplete
           value={searchValue}
           options={searchHistory.map((kw) => ({
@@ -115,7 +135,7 @@ export default function HomeView() {
           onChange={setSearchValue}
           onSelect={(val) => { setSearchValue(val); store.searchVideos(val) }}
           style={{ width: '100%', marginBottom: isSearching ? 0 : 16 }}
-          disabled={searchProgress.active}
+          disabled={loading.wall || loading.config || searchProgress.active || searchProgress.aiProcessing}
         >
           <Input.Search
             placeholder="搜索视频名称..."

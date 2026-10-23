@@ -324,33 +324,6 @@ export default function SettingsDrawer({ onClose }) {
         </Form.Item>
       </Form>
 
-      {store.sources.length > 0 && (
-        <>
-          <Divider />
-          <Title level={5} style={{ marginBottom: 16 }}>已加载源 ({store.sources.length})</Title>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {store.sources.map((s) => (
-              <div
-                key={s.uid}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  background: store.selectedSourceUid === s.uid ? 'var(--color-primary-bg)' : 'var(--color-bg-muted)',
-                  border: `1px solid ${store.selectedSourceUid === s.uid ? 'var(--color-primary-border)' : 'var(--color-border-light)'}`,
-                  fontSize: 13,
-                  color: store.selectedSourceUid === s.uid ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                }}
-                onClick={() => store.selectSource(s.uid)}
-              >
-                {s.name}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
       <Divider />
 
       <Title level={5} style={{ marginBottom: 16 }}>

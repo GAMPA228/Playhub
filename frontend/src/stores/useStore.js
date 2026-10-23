@@ -253,7 +253,15 @@ export const useStore = create((set, get) => ({
   },
 
   async selectSource(uid) {
-    set({ selectedSourceUid: uid, searchCache: null, wallVideos: [], wallMode: 'home' })
+    const { loading, searchProgress, sources, selectedSourceUid } = get()
+    if (loading.wall || loading.config || searchProgress.active || searchProgress.aiProcessing) return
+    if (uid === selectedSourceUid || !sources.some((source) => source.uid === uid)) return
+
+    set({
+      selectedSourceUid: uid, searchCache: null, searchKeyword: '',
+      wallVideos: [], wallMode: 'home', classes: [], activeClassId: '',
+      wallPagination: { page: 1, pageCount: 1, total: 0 },
+    })
     localStorage.setItem('playhub:selectedSourceUid', uid)
     await get().loadHome()
   },
