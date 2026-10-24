@@ -17,16 +17,20 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -39,10 +43,13 @@ class ConfigServiceTest {
             """;
     private ConfigService service;
     private HttpClient client;
+    private SourceSettingsService sourceSettings;
 
     @BeforeEach
     void setUp() {
-        service = new ConfigService(new ObjectMapper(), mock(AppPathsService.class));
+        sourceSettings = mock(SourceSettingsService.class);
+        when(sourceSettings.getSettings()).thenReturn(new SourceSettingsService.Settings("", List.of(), "", "", false));
+        service = new ConfigService(new ObjectMapper(), mock(AppPathsService.class), sourceSettings);
         client = mock(HttpClient.class);
         ReflectionTestUtils.setField(service, "httpClient", client);
     }
@@ -90,6 +97,7 @@ class ConfigServiceTest {
         assertEquals(base + "api.json", config.getSites().get(0).getApi());
         assertEquals("s0", config.getSites().get(0).getUid());
         assertEquals(config, service.getPayload(SESSION));
+        verify(sourceSettings).saveVideoConfig(input.trim());
     }
 
     static Stream<String> invalidAddresses() {
@@ -101,6 +109,7 @@ class ConfigServiceTest {
     void invalidAddressIsRejectedBeforeSendingRequest(String input) {
         assertThrows(IllegalArgumentException.class, () -> service.loadConfig(SESSION, input));
         verifyNoInteractions(client);
+        verifyNoInteractions(sourceSettings);
     }
 
     @Test
@@ -116,6 +125,7 @@ class ConfigServiceTest {
         verify(client).send(request.capture(), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
         assertEquals("www.xn--sss604efuw.top", request.getValue().uri().getHost());
         assertNull(service.getConfigUrl(SESSION));
+        verify(sourceSettings, never()).saveVideoConfig(any());
     }
 
     @Test
@@ -133,7 +143,7 @@ class ConfigServiceTest {
         });
         server.start();
         try {
-            ConfigService realService = new ConfigService(new ObjectMapper(), mock(AppPathsService.class));
+            ConfigService realService = new ConfigService(new ObjectMapper(), mock(AppPathsService.class), sourceSettings);
             String address = "http://127.0.0.1:" + server.getAddress().getPort()
                     + "/配置/订阅.json?token=a%2Bb+c&wd=中文";
 
@@ -147,6 +157,78 @@ class ConfigServiceTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void restoringASessionDoesNotWriteOrReorderSharedSettings() throws Exception {
+        stubResponse(CONFIG);
+
+        ConfigPayload config = service.loadConfig(SESSION, "https://example.com/config.json", false);
+
+        assertSame(config, service.getPayload(SESSION));
+        assertEquals("https://example.com/config.json", service.getConfigUrl(SESSION));
+        verify(sourceSettings, never()).saveVideoConfig(any());
+    }
+
+    static Stream<String> invalidConfigurations() {
+        return Stream.of("not-json", "null", "[]", "{\"sites\":[null]}", "{\"sites\":[{},null]}");
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidConfigurations")
+    void invalidReplacementPreservesThePreviousPayloadAndAliases(String replacement) throws Exception {
+        stubResponse(CONFIG);
+        ConfigPayload previous = service.loadConfig(SESSION, "https://example.com/old.json", false);
+        stubResponse(replacement);
+
+        assertThrows(IllegalStateException.class,
+                () -> service.loadConfig(SESSION, "https://example.com/new.json"));
+
+        assertSame(previous, service.getPayload(SESSION));
+        assertEquals("https://example.com/old.json", service.getConfigUrl(SESSION));
+        assertSame(previous.getSites().get(0), service.getSite(SESSION, "s0").orElseThrow());
+        assertSame(previous.getSites().get(0), service.getSite(SESSION, "test").orElseThrow());
+        verify(sourceSettings, never()).saveVideoConfig(any());
+    }
+
+    @Test
+    void failedDurableWriteDoesNotPublishTheReplacementSession() throws Exception {
+        stubResponse(CONFIG);
+        ConfigPayload previous = service.loadConfig(SESSION, "https://example.com/old.json", false);
+        doThrow(new IllegalStateException("服务端数据源配置保存失败"))
+                .when(sourceSettings).saveVideoConfig("https://example.com/new.json");
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> service.loadConfig(SESSION, "https://example.com/new.json"));
+
+        assertEquals("服务端数据源配置保存失败", failure.getMessage());
+        assertSame(previous, service.getPayload(SESSION));
+        assertSame(previous.getSites().get(0), service.getSite(SESSION, "s0").orElseThrow());
+        assertEquals("https://example.com/old.json", service.getConfigUrl(SESSION));
+    }
+
+    @Test
+    void aNewSessionRestoresOnlyTheSavedUrlWithoutWritingItBack() throws Exception {
+        stubResponse(CONFIG);
+        String saved = "https://example.com/saved.json";
+        when(sourceSettings.getSettings()).thenReturn(new SourceSettingsService.Settings(
+                saved, List.of("https://example.com/older.json", saved), "", "", true));
+
+        ConfigPayload config = service.getPayload("another-browser");
+
+        assertNotNull(config);
+        assertEquals(saved, service.getConfigUrl("another-browser"));
+        ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(client).send(request.capture(), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+        assertEquals(saved, request.getValue().uri().toString());
+        verify(sourceSettings, never()).saveVideoConfig(any());
+    }
+
+    @Test
+    void noSavedConfigMeansNoNetworkRequest() {
+        assertNull(service.getPayload("new-browser"));
+        verifyNoInteractions(client);
+        verify(sourceSettings, never()).saveVideoConfig(any());
     }
 
     @SuppressWarnings("unchecked")

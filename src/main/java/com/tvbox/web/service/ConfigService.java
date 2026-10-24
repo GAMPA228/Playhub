@@ -45,17 +45,19 @@ public class ConfigService {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final AppPathsService appPathsService;
+    private final SourceSettingsService sourceSettingsService;
     private final BoundedCache<String, ConfigSessionState> sessionStateMap = new BoundedCache<>(128);
-    private volatile String lastConfigUrl;
 
     private volatile Path cacheDir;
 
     @Value("${app.cache-dir:.cache/tvbox}")
     private String cacheDirConfig;
 
-    public ConfigService(ObjectMapper objectMapper, AppPathsService appPathsService) {
+    public ConfigService(ObjectMapper objectMapper, AppPathsService appPathsService,
+                         SourceSettingsService sourceSettingsService) {
         this.objectMapper = objectMapper;
         this.appPathsService = appPathsService;
+        this.sourceSettingsService = sourceSettingsService;
         this.httpClient = HttpClientFactory.create(10);
     }
 
@@ -73,9 +75,12 @@ public class ConfigService {
     }
 
     public synchronized ConfigPayload loadConfig(String sessionId, String rawUrl) {
+        return loadConfig(sessionId, rawUrl, true);
+    }
+
+    public synchronized ConfigPayload loadConfig(String sessionId, String rawUrl, boolean persist) {
         long t0 = System.currentTimeMillis();
         DiagLog.step(log, "CFG loadConfig 开始  url=" + rawUrl);
-        lastConfigUrl = rawUrl;
         ResolvedConfigTarget target = resolveConfigTarget(rawUrl);
         DiagLog.step(log, "CFG resolveConfigTarget 完成  fetchUrl=" + target.fetchUrl(), t0);
         String text = fetchText(target.fetchUrl());
@@ -84,17 +89,23 @@ public class ConfigService {
         DiagLog.step(log, "CFG decodeWrappedIfNeeded 完成  textLen=" + (text != null ? text.length() : 0), t0);
         text = fixContentPath(target.fetchUrl(), text);
         DiagLog.step(log, "CFG fixContentPath 完成", t0);
+        ConfigPayload parsed;
+        ConfigSessionState state = new ConfigSessionState();
         try {
             DiagLog.step(log, "CFG 开始 objectMapper.readValue 解析JSON...");
-            ConfigPayload parsed = objectMapper.readValue(text, ConfigPayload.class);
+            parsed = objectMapper.readValue(text, ConfigPayload.class);
+            if (parsed == null) {
+                throw new IllegalArgumentException("配置内容必须是 JSON 对象");
+            }
             DiagLog.step(log, "CFG JSON解析完成  sites=" + (parsed.getSites() != null ? parsed.getSites().size() : 0)
                     + " parses=" + (parsed.getParses() != null ? parsed.getParses().size() : 0)
                     + " lives=" + (parsed.getLives() != null ? parsed.getLives().size() : 0), t0);
-            ConfigSessionState state = stateFor(sessionId);
-            state.siteMap.clear();
             if (parsed.getSites() != null) {
                 int index = 0;
                 for (SiteDefinition site : parsed.getSites()) {
+                    if (site == null) {
+                        throw new IllegalArgumentException("站点列表不能包含空条目");
+                    }
                     String uid = "s" + index++;
                     site.setUid(uid);
                     state.siteMap.put(uid, site);
@@ -110,13 +121,18 @@ public class ConfigService {
                     }
                 }
             }
-            state.payload = parsed;
-            state.configUrl = target.originalUrl();
-            DiagLog.step(log, "CFG loadConfig 完成 siteMapSize=" + state.siteMap.size(), t0);
-            return parsed;
         } catch (Exception ex) {
             throw new IllegalStateException("配置解析失败: " + ex.getMessage(), ex);
         }
+        // Publish the new session only after durable storage succeeds; errors retain the old config.
+        if (persist) {
+            sourceSettingsService.saveVideoConfig(target.originalUrl());
+        }
+        state.payload = parsed;
+        state.configUrl = target.originalUrl();
+        sessionStateMap.put(normalizeSessionId(sessionId), state);
+        DiagLog.step(log, "CFG loadConfig 完成 siteMapSize=" + state.siteMap.size(), t0);
+        return parsed;
     }
 
     public ConfigPayload getPayload() {
@@ -125,15 +141,27 @@ public class ConfigService {
 
     public ConfigPayload getPayload(String sessionId) {
         ConfigPayload payload = stateFor(sessionId).payload;
-        if (payload == null && lastConfigUrl != null) {
-            log.info("[CONFIG] Auto-reloading config for session {} from {}", sessionId, lastConfigUrl);
+        if (payload != null) {
+            return payload;
+        }
+        synchronized (this) {
+            // A concurrent load may have completed while this request waited for the lock.
+            payload = stateFor(sessionId).payload;
+            if (payload != null) {
+                return payload;
+            }
+            String savedConfigUrl = sourceSettingsService.getSettings().configUrl();
+            if (!StringUtils.hasText(savedConfigUrl)) {
+                return null;
+            }
+            log.info("[CONFIG] Auto-reloading saved config for session {}", sessionId);
             try {
-                payload = loadConfig(sessionId, lastConfigUrl);
+                payload = loadConfig(sessionId, savedConfigUrl, false);
             } catch (Exception e) {
                 log.warn("[CONFIG] Auto-reload failed: {}", e.getMessage());
             }
+            return payload;
         }
-        return payload;
     }
 
     public String getConfigUrl() {

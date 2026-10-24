@@ -17,6 +17,50 @@ const MAX_HISTORY = 120
 const MAX_SEARCH_HISTORY = 20
 const groupLinesCache = new Map()
 let activeSearch = null
+let bootstrapPromise = null
+
+function localPreferences(settings) {
+  if (!settings || typeof settings !== 'object') return {}
+  return Object.fromEntries(Object.keys(DEFAULT_SETTINGS)
+    .filter((key) => !key.startsWith('live') && Object.hasOwn(settings, key))
+    .map((key) => [key, settings[key]]))
+}
+
+function legacySources() {
+  const settings = loadLS(SETTINGS_KEY, {}) || {}
+  const patch = {}
+  const url = localStorage.getItem('playhub:configUrl') || ''
+  const history = loadLS(CONFIG_HISTORY_KEY, [])
+  if (url) patch.configUrl = url
+  if (Array.isArray(history) && history.length) patch.configHistory = history.slice(0, 10)
+  for (const key of ['liveSourceUrl', 'liveEpgUrl']) {
+    if (settings[key]) patch[key] = settings[key]
+  }
+  return Object.keys(patch).length ? patch : null
+}
+
+function clearLegacySources(fields) {
+  try {
+    if (fields.includes('configUrl')) localStorage.removeItem('playhub:configUrl')
+    if (fields.includes('configHistory')) localStorage.removeItem(CONFIG_HISTORY_KEY)
+    const settings = loadLS(SETTINGS_KEY, {}) || {}
+    for (const key of ['liveSourceUrl', 'liveEpgUrl']) {
+      if (fields.includes(key)) delete settings[key]
+    }
+    saveLS(SETTINGS_KEY, settings)
+  } catch {}
+}
+
+function emptyVideoState() {
+  groupLinesCache.clear()
+  return {
+    config: null, sources: [], selectedSourceUid: '', classes: [], activeClassId: '',
+    wallVideos: [], wallMode: 'home', wallTitle: '',
+    wallPagination: { page: 1, pageCount: 1, total: 0 },
+    searchKeyword: '', searchCache: null, detailCache: {}, currentDetail: null, currentPlayback: null,
+    history: [], _configRun: null, _wallRun: null, _videoContext: {},
+  }
+}
 
 async function cancelRemoteSearch(run) {
   if (!run.progressId || run.cancelSent) return
@@ -148,8 +192,17 @@ ${validDetails.map((d, i) => `源${i + 1}: ${JSON.stringify({ name: d.name, desc
 export const useStore = create((set, get) => ({
   configUrl: '',
   config: null,
-  configHistory: loadLS(CONFIG_HISTORY_KEY, []),
+  configHistory: [],
   bootstrapped: false,
+  bootstrapping: false,
+  sourceSettingsLoaded: false,
+  sourceSettingsError: '',
+  sourceSaving: false,
+  legacySourceSettings: legacySources(),
+  _configRun: null,
+  _wallRun: null,
+  _liveRun: null,
+  _videoContext: {},
 
   sources: [],
   selectedSourceUid: '',
@@ -171,7 +224,7 @@ export const useStore = create((set, get) => ({
 
   currentPlayback: null,
 
-  history: loadLS(configHistoryKey(localStorage.getItem('playhub:configUrl') || ''), []),
+  history: [],
 
   liveGroups: [],
   liveChannels: [],
@@ -179,7 +232,7 @@ export const useStore = create((set, get) => ({
   currentLiveSourceIndex: 0,
   liveSummary: null,
 
-  settings: { ...DEFAULT_SETTINGS, ...loadLS(SETTINGS_KEY, {}) },
+  settings: { ...DEFAULT_SETTINGS, ...localPreferences(loadLS(SETTINGS_KEY, {})) },
 
   loading: { config: false, wall: false, detail: false, player: false },
 
@@ -187,30 +240,73 @@ export const useStore = create((set, get) => ({
     return get().sources.find((x) => x.uid === get().selectedSourceUid) || get().sources[0] || null
   },
 
-  async bootstrap() {
-    try {
-      const settings = { ...DEFAULT_SETTINGS, ...loadLS(SETTINGS_KEY, {}) }
-      const configUrl = localStorage.getItem('playhub:configUrl') || ''
-      const selectedSourceUid = localStorage.getItem('playhub:selectedSourceUid') || ''
-      set({ settings, configUrl, selectedSourceUid, bootstrapped: true })
-      if (configUrl) {
-        try {
-          await get().loadConfig(configUrl)
-        } catch (err) {
-          console.error('loadConfig error in bootstrap:', err)
-        }
+  bootstrap({ force = false } = {}) {
+    if (get().bootstrapping) return bootstrapPromise
+    if (!force && get().bootstrapped) return Promise.resolve()
+    if (get().sourceSaving || get().loading.config) return Promise.resolve()
+    set((s) => ({
+      bootstrapping: true, sourceSettingsError: '', legacySourceSettings: legacySources(),
+      settings: { ...s.settings, ...localPreferences(loadLS(SETTINGS_KEY, {})) },
+    }))
+    bootstrapPromise = (async () => {
+      try {
+        const saved = await api.getSourceSettings({ silentError: true })
+        get().applySourceSettings(saved)
+        set({ selectedSourceUid: localStorage.getItem('playhub:selectedSourceUid') || '' })
+        if (saved.configUrl) await get().loadConfig(saved.configUrl, { persist: false })
+      } catch (err) {
+        set({ sourceSettingsError: err.message || '服务端数据源配置加载失败' })
+      } finally {
+        set({ bootstrapping: false, bootstrapped: true })
+        bootstrapPromise = null
       }
-    } catch (err) {
-      console.error('bootstrap error:', err)
-      set({ bootstrapped: true })
+    })()
+    return bootstrapPromise
+  },
+
+  applySourceSettings(saved) {
+    const current = get()
+    const videoChanged = saved.configUrl !== current.configUrl
+    const liveChanged = saved.liveSourceUrl !== current.settings.liveSourceUrl || saved.liveEpgUrl !== current.settings.liveEpgUrl
+    if (videoChanged) current.stopSearch()
+    set((s) => ({
+      ...(videoChanged ? emptyVideoState() : {}),
+      ...(liveChanged ? { liveGroups: [], liveChannels: [], liveSummary: null, currentLiveChannelId: '', currentLiveSourceIndex: 0, _liveRun: null } : {}),
+      configUrl: saved.configUrl || '', configHistory: saved.configHistory || [],
+      settings: { ...s.settings, liveSourceUrl: saved.liveSourceUrl || '', liveEpgUrl: saved.liveEpgUrl || '' },
+      sourceSettingsLoaded: true, sourceSettingsError: '',
+      loading: videoChanged ? { ...s.loading, config: false, wall: false, detail: false, player: false } : s.loading,
+    }))
+  },
+
+  async saveSourceSettings(patch) {
+    if (get().sourceSaving || get().bootstrapping || get().loading.config) throw new Error('数据源操作正在进行，请稍候')
+    const shared = Object.fromEntries(['configUrl', 'configHistory', 'liveSourceUrl', 'liveEpgUrl']
+      .filter((key) => Object.hasOwn(patch, key)).map((key) => [key, patch[key]]))
+    if (!Object.keys(shared).length) return
+    set({ sourceSaving: true })
+    try {
+      const saved = await api.saveSourceSettings(shared, { silentError: true })
+      get().applySourceSettings(saved)
+      clearLegacySources(Object.keys(shared))
+      set({ legacySourceSettings: legacySources() })
+      return saved
+    } finally {
+      set({ sourceSaving: false })
     }
   },
 
-  async loadConfig(url) {
+  async loadConfig(url, { persist = true } = {}) {
+    if (get().sourceSaving || get().loading.config || (persist && get().bootstrapping)) throw new Error('数据源操作正在进行，请稍候')
+    url = url.trim()
     get().stopSearch()
-    set((s) => ({ loading: { ...s.loading, config: true } }))
+    const run = {}
+    set((s) => ({ _configRun: run, loading: { ...s.loading, config: true } }))
     try {
-      const res = await api.loadConfig(url)
+      const res = await api.loadConfig(url, { persist, config: { silentError: true } })
+      if (get()._configRun !== run) return
+      if (res.sourceSettings) get().applySourceSettings(res.sourceSettings)
+      if (!persist && res.sourceSettings && res.sourceSettings.configUrl !== url) throw new Error('服务器数据源已更新，请重新同步')
       const cfg = res.config || res
       const sites = (cfg.sites || []).filter((s) => s.searchable !== 0)
       const classes = normalizeClasses(cfg)
@@ -230,36 +326,72 @@ export const useStore = create((set, get) => ({
       groupLinesCache.clear()
       set({
         configUrl: url, config: cfg, sources: sites, selectedSourceUid: selectedUid,
-        classes: classes.length ? classes : get().classes,
+        classes,
         activeClassId: '', searchCache: null, bootstrapped: true,
         detailCache: {}, currentDetail: null, currentPlayback: null,
         history: loadLS(configHistoryKey(url), []),
+        wallVideos: [], wallMode: 'home', wallTitle: '', _configRun: run, _videoContext: {},
+        loading: { ...get().loading, config: true, detail: false, player: false },
       })
-      localStorage.setItem('playhub:configUrl', url)
       localStorage.setItem('playhub:selectedSourceUid', selectedUid)
-      get().addConfigHistory(url)
+      if (persist) {
+        clearLegacySources(['configUrl', 'configHistory'])
+        set({ legacySourceSettings: legacySources() })
+      }
 
       if (selectedUid) await get().loadHome()
     } catch (err) {
       console.error('loadConfig error:', err)
       throw err
     } finally {
-      set((s) => ({ loading: { ...s.loading, config: false } }))
+      if (get()._configRun === run) set((s) => ({ _configRun: null, loading: { ...s.loading, config: false } }))
     }
   },
 
-  addConfigHistory(url) {
-    const list = get().configHistory.filter((u) => u !== url)
-    list.unshift(url)
-    const trimmed = list.slice(0, 10)
-    set({ configHistory: trimmed })
-    saveLS(CONFIG_HISTORY_KEY, trimmed)
+  async clearVideoConfig() {
+    await get().saveSourceSettings({ configUrl: '', configHistory: [] })
+    get().stopSearch()
+    set((s) => ({ ...emptyVideoState(), loading: { ...s.loading, wall: false, detail: false, player: false } }))
   },
 
-  removeConfigHistory(url) {
+  async removeConfigHistory(url) {
     const list = get().configHistory.filter((u) => u !== url)
-    set({ configHistory: list })
-    saveLS(CONFIG_HISTORY_KEY, list)
+    await get().saveSourceSettings({ configHistory: list })
+  },
+
+  async importSettings(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('配置数据格式不正确')
+    const patch = {}
+    for (const key of ['configUrl', 'configHistory']) {
+      if (Object.hasOwn(data, key)) patch[key] = data[key]
+    }
+    for (const key of ['liveSourceUrl', 'liveEpgUrl']) {
+      if (data.settings && Object.hasOwn(data.settings, key)) patch[key] = data.settings[key]
+    }
+    await get().saveSourceSettings(patch)
+    if (data.settings) get().updateSettings(data.settings)
+    if (Array.isArray(data.searchHistory)) {
+      const history = [...new Set(data.searchHistory.filter((item) => typeof item === 'string' && item.trim()))].slice(0, MAX_SEARCH_HISTORY)
+      set({ searchHistory: history })
+      saveLS(SEARCH_HISTORY_KEY, history)
+    }
+    if (patch.configUrl) {
+      try {
+        await get().loadConfig(get().configUrl, { persist: false })
+      } catch (err) {
+        throw new Error('配置已保存到服务器，但视频源加载失败：' + err.message)
+      }
+    }
+  },
+
+  async migrateLegacySources() {
+    const legacy = legacySources()
+    if (!legacy) return
+    await get().importSettings({
+      ...(Object.hasOwn(legacy, 'configUrl') ? { configUrl: legacy.configUrl } : {}),
+      ...(legacy.configHistory ? { configHistory: legacy.configHistory } : {}),
+      settings: Object.fromEntries(['liveSourceUrl', 'liveEpgUrl'].filter((key) => Object.hasOwn(legacy, key)).map((key) => [key, legacy[key]])),
+    })
   },
 
   addSearchHistory(keyword) {
@@ -302,9 +434,13 @@ export const useStore = create((set, get) => ({
       set({ wallVideos: [], loading: { ...get().loading, wall: false } })
       return
     }
-    set((s) => ({ loading: { ...s.loading, wall: true }, wallMode: 'home', wallTitle: source.name, searchCache: null }))
+    const run = {}
+    const config = get().config
+    const isCurrent = () => get()._wallRun === run && get().config === config
+    set((s) => ({ _wallRun: run, loading: { ...s.loading, wall: true }, wallMode: 'home', wallTitle: source.name, searchCache: null }))
     try {
       const payload = await api.sourceHome(source.uid)
+      if (!isCurrent()) return
       const classes = normalizeClasses(payload)
       if (classes.length) set({ classes })
       const list = normalizeList(payload).map((v) => normalizeVideoCard(v, source))
@@ -312,18 +448,22 @@ export const useStore = create((set, get) => ({
       if (!list.length && classes.length) await get().loadCategory(classIdOf(classes[0]))
     } catch (err) {
       console.error('loadHome error:', err)
-      set({ wallVideos: [] })
+      if (isCurrent()) set({ wallVideos: [] })
     } finally {
-      set((s) => ({ loading: { ...s.loading, wall: false } }))
+      if (isCurrent()) set((s) => ({ loading: { ...s.loading, wall: false } }))
     }
   },
 
   async loadCategory(tid, page = 1) {
     const source = get().getSelectedSource()
     if (!source) return
-    set((s) => ({ loading: { ...s.loading, wall: true }, wallMode: 'category', activeClassId: tid, wallTitle: get().classes.find((c) => classIdOf(c) === tid)?.type_name || tid }))
+    const run = {}
+    const config = get().config
+    const isCurrent = () => get()._wallRun === run && get().config === config
+    set((s) => ({ _wallRun: run, loading: { ...s.loading, wall: true }, wallMode: 'category', activeClassId: tid, wallTitle: get().classes.find((c) => classIdOf(c) === tid)?.type_name || tid }))
     try {
       const payload = await api.sourceCategory(source.uid, tid, page)
+      if (!isCurrent()) return
       const list = normalizeList(payload).map((v) => normalizeVideoCard(v, source))
       set({
         wallVideos: page === 1 ? list : [...get().wallVideos, ...list],
@@ -332,7 +472,7 @@ export const useStore = create((set, get) => ({
     } catch (err) {
       console.error('loadCategory error:', err)
     } finally {
-      set((s) => ({ loading: { ...s.loading, wall: false } }))
+      if (isCurrent()) set((s) => ({ loading: { ...s.loading, wall: false } }))
     }
   },
 
@@ -443,6 +583,8 @@ export const useStore = create((set, get) => ({
   },
 
   async ensureDetail(sourceUid, vodId, options = {}) {
+    const context = get()._videoContext
+    const isCurrent = () => get()._videoContext === context
     const cacheKey = `${sourceUid}::${vodId}`
     if (!options.force && get().detailCache[cacheKey]) {
       set({ currentDetail: get().detailCache[cacheKey] })
@@ -451,40 +593,51 @@ export const useStore = create((set, get) => ({
     set((s) => ({ loading: { ...s.loading, detail: true } }))
     try {
       const payload = await api.sourceDetail(sourceUid, vodId)
+      if (!isCurrent()) return null
       const source = get().sources.find((s) => s.uid === sourceUid)
       const detail = normalizeDetail(payload, source)
       if (!detail) throw new Error('详情数据为空')
       set((s) => ({ currentDetail: detail, detailCache: { ...s.detailCache, [cacheKey]: detail } }))
       return detail
     } catch (err) {
+      if (!isCurrent()) return null
       console.error('ensureDetail error:', err)
       return null
     } finally {
-      set((s) => ({ loading: { ...s.loading, detail: false } }))
+      if (isCurrent()) set((s) => ({ loading: { ...s.loading, detail: false } }))
     }
   },
 
   async ensureGroupDetail(sources) {
+    const context = get()._videoContext
+    const isCurrent = () => get()._videoContext === context
     set((s) => ({ loading: { ...s.loading, detail: true } }))
     try {
       for (const src of sources) {
         try {
           const payload = await api.sourceDetail(src.uid, src.vodId)
+          if (!isCurrent()) return null
           const source = get().sources.find((s) => s.uid === src.uid) || src
           const detail = normalizeDetail(payload, source)
           if (detail && detail.playGroups?.length > 0) {
             set((s) => ({ currentDetail: detail }))
             return detail
           }
-        } catch { continue }
+        } catch {
+          if (!isCurrent()) return null
+          continue
+        }
       }
       return null
     } finally {
-      set((s) => ({ loading: { ...s.loading, detail: false } }))
+      if (isCurrent()) set((s) => ({ loading: { ...s.loading, detail: false } }))
     }
   },
 
   async ensureGroupLines(sources, onProgress, onAiProcessing) {
+    const context = get()._videoContext
+    const isCurrent = () => get()._videoContext === context
+    const discarded = () => ({ lines: [], detail: null, time: Date.now() })
     const cacheKey = sources.map((s) => `${s.uid}:${s.vodId}`).sort().join('|')
     const cached = groupLinesCache.get(cacheKey)
     if (cached && Date.now() - cached.time < 86400000) return cached
@@ -498,14 +651,17 @@ export const useStore = create((set, get) => ({
     try {
       const items = sources.map((src) => ({ key: src.uid, id: src.vodId }))
       const response = await api.batchDetail(items)
+      if (!isCurrent()) return discarded()
       const progressId = response.progressId
 
       if (progressId) {
         // Poll progress until done
         const results = await new Promise((resolve, reject) => {
           const poll = async () => {
+            if (!isCurrent()) { resolve([]); return }
             try {
               const progress = await api.getProgress(progressId)
+              if (!isCurrent()) { resolve([]); return }
               if (progress.found) {
                 onProgress?.(progress.completed, progress.total)
                 if (progress.done) {
@@ -522,6 +678,7 @@ export const useStore = create((set, get) => ({
           }
           poll()
         })
+        if (!isCurrent()) return discarded()
 
         // Process results
         for (const r of results) {
@@ -567,11 +724,13 @@ export const useStore = create((set, get) => ({
         }
       }
     } catch (err) {
+      if (!isCurrent()) return discarded()
       console.error('batchDetail error, falling back:', err)
       let done = 0
       for (const src of sources) {
         try {
           const payload = await api.sourceDetail(src.uid, src.vodId)
+          if (!isCurrent()) return discarded()
           const source = get().sources.find((s) => s.uid === src.uid) || src
           const detail = normalizeDetail(payload, source)
           if (detail?.playGroups?.length) {
@@ -586,7 +745,9 @@ export const useStore = create((set, get) => ({
               })
             }
           }
-        } catch {}
+        } catch {
+          if (!isCurrent()) return discarded()
+        }
         done++
         onProgress?.(done, total)
       }
@@ -600,6 +761,7 @@ export const useStore = create((set, get) => ({
     if (settings.aiEnabled && settings.aiUrl && settings.aiKey && allDetails.length > 1) {
       onAiProcessing?.(true)
       const merged = await aiMergeDetails(allDetails, settings)
+      if (!isCurrent()) return discarded()
       if (merged) bestDetail = merged
       onAiProcessing?.(false)
     }
@@ -610,6 +772,8 @@ export const useStore = create((set, get) => ({
   },
 
   async playEpisode(sourceUid, vodId, flagName, episodeIndex) {
+    const context = get()._videoContext
+    const isCurrent = () => get()._videoContext === context
     const detail = get().currentDetail
     if (!detail) return null
     set((s) => ({ loading: { ...s.loading, player: true } }))
@@ -620,19 +784,23 @@ export const useStore = create((set, get) => ({
       if (!episode) return null
       const episodeId = episode.id || episode.url
       const playUrl = await resolvePlaybackUrl(() => api.sourcePlay(sourceUid, flagName, episodeId), episodeId)
+      if (!isCurrent()) return null
       const playback = { sourceUid, vodId, title: detail.name, poster: detail.pic, flagName, episodeIndex, episodeName: episode.name, url: playUrl }
       set({ currentPlayback: playback })
       get().upsertHistory(playback)
       return playback
     } catch (err) {
+      if (!isCurrent()) return null
       console.error('playEpisode error:', err)
       throw err
     } finally {
-      set((s) => ({ loading: { ...s.loading, player: false } }))
+      if (isCurrent()) set((s) => ({ loading: { ...s.loading, player: false } }))
     }
   },
 
   async autoSelectAndPlay(sources, vodId, flagName, episodeIndex) {
+    const context = get()._videoContext
+    const isCurrent = () => get()._videoContext === context
     set((s) => ({ loading: { ...s.loading, player: true } }))
     let lastError = null
     try {
@@ -640,6 +808,7 @@ export const useStore = create((set, get) => ({
         try {
           const uid = src.uid || src.key
           const payload = await api.sourceDetail(uid, vodId)
+          if (!isCurrent()) return null
           const source = get().sources.find((s) => s.uid === uid) || src
           const detail = normalizeDetail(payload, source)
           if (!detail) continue
@@ -649,17 +818,19 @@ export const useStore = create((set, get) => ({
           const episode = group.episodes[epIdx]
           const episodeId = episode.id || episode.url
           const playUrl = await resolvePlaybackUrl(() => api.sourcePlay(uid, group.flag, episodeId), episodeId)
+          if (!isCurrent()) return null
           const playback = { sourceUid: uid, vodId, title: detail.name, poster: detail.pic, flagName: group.flag, episodeIndex: epIdx, episodeName: episode.name, url: playUrl, detail }
           set({ currentPlayback: playback, currentDetail: detail })
           get().upsertHistory(playback)
           return playback
         } catch (err) {
+          if (!isCurrent()) return null
           lastError = err
         }
       }
       throw lastError || new Error('没有可用的播放源')
     } finally {
-      set((s) => ({ loading: { ...s.loading, player: false } }))
+      if (isCurrent()) set((s) => ({ loading: { ...s.loading, player: false } }))
     }
   },
 
@@ -726,8 +897,11 @@ export const useStore = create((set, get) => ({
 
   async loadLiveData(playlistUrl, epgUrl) {
     if (!playlistUrl) return
+    const run = {}
+    set({ _liveRun: run })
     try {
       const res = await api.liveBootstrap(playlistUrl, epgUrl)
+      if (get()._liveRun !== run || get().settings.liveSourceUrl !== playlistUrl || get().settings.liveEpgUrl !== (epgUrl || '')) return
       const rawChannels = res.channels || []
       const channelMap = new Map()
       for (const ch of rawChannels) {
@@ -745,7 +919,11 @@ export const useStore = create((set, get) => ({
       for (const ch of channels) { groupMap.set(ch.group, (groupMap.get(ch.group) || 0) + 1) }
       const groups = [...groupMap.entries()].map(([name, count]) => ({ name, count }))
       set({ liveGroups: groups, liveChannels: channels, liveSummary: res.summary, currentLiveChannelId: channels[0]?.id || '', currentLiveSourceIndex: 0 })
-    } catch (err) { console.error('loadLiveData error:', err) }
+    } catch (err) {
+      if (get()._liveRun !== run) return
+      console.error('loadLiveData error:', err)
+      throw err
+    }
   },
 
   selectLiveChannel(id) { set({ currentLiveChannelId: id, currentLiveSourceIndex: 0 }) },
@@ -762,8 +940,10 @@ export const useStore = create((set, get) => ({
   },
 
   updateSettings(patch) {
-    const next = { ...get().settings, ...patch }
+    const preferences = localPreferences(patch)
+    const next = { ...get().settings, ...preferences }
     set({ settings: next })
-    saveLS(SETTINGS_KEY, next)
+    // Preserve old, un-migrated fields only; never copy shared URLs or AI keys to the server.
+    saveLS(SETTINGS_KEY, { ...loadLS(SETTINGS_KEY, {}), ...localPreferences(next) })
   },
 }))

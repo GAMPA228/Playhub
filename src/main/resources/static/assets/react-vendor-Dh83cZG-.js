@@ -1,4 +1,4 @@
-import{_ as u,R as le}from"./antd-vendor-BjYLkEfX.js";/**
+import{$ as u,R as le}from"./antd-vendor-CfVl-cFz.js";/**
  * @remix-run/router v1.23.2
  *
  * Copyright (c) Remix Software Inc.

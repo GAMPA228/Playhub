@@ -102,6 +102,7 @@ const storage = new Map()
 globalThis.localStorage = {
   getItem: (key) => storage.get(key) ?? null,
   setItem: (key, value) => storage.set(key, String(value)),
+  removeItem: (key) => storage.delete(key),
 }
 const { useStore } = await import(`data:text/javascript,${encodeURIComponent(storeSource)}`)
 

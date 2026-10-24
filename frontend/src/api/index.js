@@ -1,7 +1,15 @@
 import { getJson, postJson } from './client'
 
-export function loadConfig(url) {
-  return postJson('/api/config/load', { url })
+export function loadConfig(url, { persist = true, config = {} } = {}) {
+  return postJson('/api/config/load', { url, persist }, config)
+}
+
+export function getSourceSettings(config = {}) {
+  return getJson('/api/source-settings', config)
+}
+
+export function saveSourceSettings(patch, config = {}) {
+  return postJson('/api/source-settings', patch, config)
 }
 
 export function getConfig() {

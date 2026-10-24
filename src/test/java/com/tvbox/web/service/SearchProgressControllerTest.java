@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -34,11 +35,14 @@ class SearchProgressControllerTest {
     private final ProgressTrackerService tracker = new ProgressTrackerService();
     private final TvboxFacadeService facade = mock(TvboxFacadeService.class);
     private final MockHttpSession session = new MockHttpSession();
+    private final SourceSettingsService sourceSettings = mock(SourceSettingsService.class);
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new TvboxController(facade, tracker))
+        when(sourceSettings.getSettings()).thenReturn(new SourceSettingsService.Settings(
+                "https://config.example/saved", List.of("https://config.example/saved"), "", "", true));
+        mvc = MockMvcBuilders.standaloneSetup(new TvboxController(facade, tracker, sourceSettings))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
@@ -131,9 +135,9 @@ class SearchProgressControllerTest {
     @Test
     void successfulConfigReplacementCancelsOldSearchButFailurePreservesIt() throws Exception {
         String id = tracker.createSearchProgress(77, session.getId());
-        when(facade.load(session.getId(), "https://config.example/fail"))
+        when(facade.load(session.getId(), "https://config.example/fail", true))
                 .thenThrow(new IllegalStateException("配置不可用"));
-        when(facade.load(session.getId(), "https://config.example/success"))
+        when(facade.load(session.getId(), "https://config.example/success", true))
                 .thenReturn(new com.tvbox.web.model.ConfigPayload());
 
         mvc.perform(post("/api/config/load").session(session).contentType("application/json")
@@ -145,5 +149,19 @@ class SearchProgressControllerTest {
                         .content("{\"url\":\"https://config.example/success\"}"))
                 .andExpect(status().isOk());
         assertTrue(tracker.getProgress(id).isCancelled());
+    }
+
+    @Test
+    void bootstrapExplicitlyDisablesPersistenceAndReturnsTheSharedSnapshot() throws Exception {
+        String url = "https://config.example/restore";
+        when(facade.load(session.getId(), url, false)).thenReturn(new com.tvbox.web.model.ConfigPayload());
+
+        mvc.perform(post("/api/config/load").session(session).contentType("application/json")
+                        .content("{\"url\":\"" + url + "\",\"persist\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sourceSettings.configUrl").value("https://config.example/saved"))
+                .andExpect(jsonPath("$.sourceSettings.initialized").value(true));
+
+        verify(facade).load(session.getId(), url, false);
     }
 }

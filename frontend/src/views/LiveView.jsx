@@ -61,16 +61,25 @@ export default function LiveView() {
   const [streamReady, setStreamReady] = useState(false)
   const [now, setNow] = useState(Date.now())
   const failoverTimer = useRef(null)
+  const loadSequence = useRef(0)
+  const loadLiveData = store.loadLiveData
 
   const handleLoad = useCallback(async () => {
     const url = settings.liveSourceUrl
     if (!url) { message.warning('请先在设置中配置直播源地址'); return }
+    const sequence = ++loadSequence.current
     setLoading(true)
-    try { await store.loadLiveData(url, settings.liveEpgUrl) } catch { message.error('加载直播源失败') }
-    finally { setLoading(false) }
-  }, [settings.liveSourceUrl, settings.liveEpgUrl, store])
+    try { await loadLiveData(url, settings.liveEpgUrl) }
+    catch (err) { if (loadSequence.current === sequence) message.error('加载直播源失败：' + err.message) }
+    finally { if (loadSequence.current === sequence) setLoading(false) }
+  }, [settings.liveSourceUrl, settings.liveEpgUrl, loadLiveData])
 
-  useEffect(() => { if (liveChannels.length === 0 && settings.liveSourceUrl) handleLoad() }, [])
+  useEffect(() => {
+    setSelectedGroup('')
+    setLoading(false)
+    if (settings.liveSourceUrl && useStore.getState().liveChannels.length === 0) void handleLoad()
+    return () => { loadSequence.current++ }
+  }, [settings.liveSourceUrl, settings.liveEpgUrl, handleLoad])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000)

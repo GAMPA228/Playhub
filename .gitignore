@@ -14,6 +14,7 @@ dist-ssr
 coverage
 *.local
 .cache
+/data/
 
 # 忽略 libs 下所有内容
 target/**

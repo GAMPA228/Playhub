@@ -114,6 +114,10 @@ public class TvboxFacadeService implements InitializingBean, DisposableBean {
         return configService.loadConfig(sessionId, url);
     }
 
+    public ConfigPayload load(String sessionId, String url, boolean persist) {
+        return configService.loadConfig(sessionId, url, persist);
+    }
+
     public ConfigPayload getConfig() {
         return getConfig(null);
     }

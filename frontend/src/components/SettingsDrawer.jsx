@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react'
-import { Form, Input, Button, Select, Space, Divider, Typography, message, List, Popconfirm, AutoComplete, Switch, Modal } from 'antd'
+import React, { useState, useRef, useEffect } from 'react'
+import { Form, Input, Button, Select, Space, Divider, Typography, message, List, Popconfirm, AutoComplete, Switch, Modal, Alert } from 'antd'
 import { DeleteOutlined, LinkOutlined, HistoryOutlined, ClockCircleOutlined, RobotOutlined, CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined, ExportOutlined, ImportOutlined, LockOutlined } from '@ant-design/icons'
 import { useStore } from '../stores/useStore'
 
@@ -9,6 +9,9 @@ export default function SettingsDrawer({ onClose }) {
   const store = useStore()
   const [configInput, setConfigInput] = useState(store.configUrl || '')
   const [loading, setLoading] = useState(false)
+  const [liveSourceInput, setLiveSourceInput] = useState(store.settings.liveSourceUrl)
+  const [liveEpgInput, setLiveEpgInput] = useState(store.settings.liveEpgUrl)
+  const [importing, setImporting] = useState(false)
   const [aiTesting, setAiTesting] = useState(false)
   const [aiTestResult, setAiTestResult] = useState(null)
   const [exportModalOpen, setExportModalOpen] = useState(false)
@@ -17,20 +20,54 @@ export default function SettingsDrawer({ onClose }) {
   const [importPassword, setImportPassword] = useState('')
   const [importData, setImportData] = useState('')
   const fileInputRef = useRef(null)
+  const sourceBusy = loading || importing || store.sourceSaving || store.bootstrapping || store.loading.config
+  const sourceDisabled = sourceBusy || !store.sourceSettingsLoaded
+
+  useEffect(() => { setConfigInput(store.configUrl) }, [store.configUrl])
+  useEffect(() => { setLiveSourceInput(store.settings.liveSourceUrl) }, [store.settings.liveSourceUrl])
+  useEffect(() => { setLiveEpgInput(store.settings.liveEpgUrl) }, [store.settings.liveEpgUrl])
 
   const handleLoadConfig = async (url) => {
+    if (sourceDisabled) return
     const target = (url || configInput).trim()
     if (!target) { message.warning('请输入配置地址'); return }
     setLoading(true)
     try {
       await store.loadConfig(target)
       setConfigInput(target)
-      message.success('配置加载成功')
+      message.success('配置已加载并保存到服务器')
     } catch (err) {
       message.error('加载失败: ' + err.message)
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleClearVideo = async () => {
+    try {
+      await store.clearVideoConfig()
+      setConfigInput('')
+      message.success('服务器视频配置及地址历史已清空')
+    } catch (err) { message.error('清空失败：' + err.message) }
+  }
+
+  const handleSaveLive = async () => {
+    const patch = {}
+    if (liveSourceInput.trim() !== store.settings.liveSourceUrl) patch.liveSourceUrl = liveSourceInput.trim()
+    if (liveEpgInput.trim() !== store.settings.liveEpgUrl) patch.liveEpgUrl = liveEpgInput.trim()
+    try {
+      await store.saveSourceSettings(patch)
+      message.success('直播设置已保存到服务器')
+    } catch (err) { message.error('保存失败：' + err.message) }
+  }
+
+  const handleMigrate = async () => {
+    setLoading(true)
+    try {
+      await store.migrateLegacySources()
+      message.success('此浏览器的数据源配置已迁移到服务器')
+    } catch (err) { message.error('迁移结果：' + err.message) }
+    finally { setLoading(false) }
   }
 
   const historyOptions = store.configHistory.map((url) => ({
@@ -117,29 +154,21 @@ export default function SettingsDrawer({ onClose }) {
     setExportPassword('')
   }
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!importData.trim()) { message.warning('请粘贴配置数据'); return }
     if (!importPassword) { message.warning('请输入配置密码'); return }
+    setImporting(true)
     try {
       const configData = decryptData(importData.trim(), importPassword)
-      if (configData.configUrl) {
-        store.loadConfig(configData.configUrl)
-      }
-      if (configData.settings) {
-        store.updateSettings(configData.settings)
-      }
-      if (configData.configHistory) {
-        // Merge config history
-        const merged = [...new Set([...configData.configHistory, ...store.configHistory])].slice(0, 10)
-        store.configHistory = merged
-        localStorage.setItem('playhub:config-history', JSON.stringify(merged))
-      }
-      message.success('配置导入成功')
+      await store.importSettings(configData)
+      message.success('配置导入成功，数据源已保存到服务器')
       setImportModalOpen(false)
       setImportPassword('')
       setImportData('')
     } catch (err) {
       message.error(err.message || '导入失败')
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -172,11 +201,19 @@ export default function SettingsDrawer({ onClose }) {
       <Divider />
 
       <Title level={5} style={{ marginBottom: 16 }}>数据源配置</Title>
+      <Alert type="info" showIcon message="数据源保存在服务器，其他设备刷新后共享；这里仍可修改或清空。外观、AI 密钥与观看记录仅保存在当前浏览器。" style={{ marginBottom: 16 }} />
+      {store.sourceSettingsError && <Alert type="error" showIcon message={store.sourceSettingsError} description="不会自动使用旧浏览器数据覆盖服务器配置。" action={<Button size="small" loading={store.bootstrapping} disabled={sourceBusy} onClick={() => store.bootstrap({ force: true })}>重新同步</Button>} style={{ marginBottom: 16 }} />}
+      {store.legacySourceSettings && (
+        <Popconfirm title="将此浏览器旧数据源迁移到服务器？" description="会覆盖对应的服务器配置，并影响其他设备。" onConfirm={handleMigrate} disabled={sourceDisabled}>
+          <Button disabled={sourceDisabled} style={{ marginBottom: 16 }}>迁移此浏览器源配置到服务器</Button>
+        </Popconfirm>
+      )}
       <Form layout="vertical">
         <Form.Item label="配置地址" style={{ marginBottom: 12 }}>
           <Space.Compact style={{ width: '100%' }}>
             <AutoComplete
               value={configInput}
+              disabled={sourceDisabled}
               options={historyOptions}
               onChange={setConfigInput}
               onSelect={(val) => { setConfigInput(val); handleLoadConfig(val) }}
@@ -184,9 +221,12 @@ export default function SettingsDrawer({ onClose }) {
             >
               <Input prefix={<LinkOutlined />} placeholder="输入 TVBox 配置 JSON 地址" onPressEnter={() => handleLoadConfig()} />
             </AutoComplete>
-            <Button type="primary" loading={loading} onClick={() => handleLoadConfig()}>加载</Button>
+            <Button type="primary" disabled={sourceDisabled} loading={loading || store.loading.config} onClick={() => handleLoadConfig()}>加载并保存</Button>
           </Space.Compact>
         </Form.Item>
+        <Popconfirm title="清空服务器视频配置和地址历史？" description="其他设备刷新后也将不再加载该配置。" onConfirm={handleClearVideo} disabled={sourceDisabled}>
+          <Button danger disabled={sourceDisabled || (!store.configUrl && !store.configHistory.length)}>清空视频配置</Button>
+        </Popconfirm>
       </Form>
 
       {store.configHistory.length > 0 && (
@@ -203,8 +243,8 @@ export default function SettingsDrawer({ onClose }) {
                 style={{ padding: '8px 12px', borderRadius: 8, marginBottom: 4, background: store.configUrl === url ? 'var(--color-primary-bg)' : 'var(--color-bg-muted)', border: `1px solid ${store.configUrl === url ? 'var(--color-primary-border)' : 'var(--color-border-light)'}`, cursor: 'pointer', transition: 'all 0.2s ease' }}
                 onClick={() => { setConfigInput(url); handleLoadConfig(url) }}
                 actions={[
-                  <Popconfirm title="确定删除？" onConfirm={(e) => { e?.stopPropagation(); store.removeConfigHistory(url) }} onCancel={(e) => e?.stopPropagation()}>
-                    <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
+                  <Popconfirm key="delete" title="从服务器地址历史中删除？" disabled={sourceDisabled} onConfirm={async (e) => { e?.stopPropagation(); try { await store.removeConfigHistory(url) } catch (err) { message.error('删除失败：' + err.message) } }} onCancel={(e) => e?.stopPropagation()}>
+                    <Button type="text" size="small" disabled={sourceDisabled} danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
                   </Popconfirm>,
                 ]}
               >
@@ -311,17 +351,23 @@ export default function SettingsDrawer({ onClose }) {
         <Form.Item label="直播源地址">
           <Input
             placeholder="输入 M3U 直播源地址"
-            value={store.settings.liveSourceUrl}
-            onChange={(e) => store.updateSettings({ liveSourceUrl: e.target.value })}
+            value={liveSourceInput}
+            disabled={sourceDisabled}
+            allowClear
+            onChange={(e) => setLiveSourceInput(e.target.value)}
           />
         </Form.Item>
         <Form.Item label="EPG 地址 (可选)">
           <Input
             placeholder="输入 EPG XML 地址"
-            value={store.settings.liveEpgUrl}
-            onChange={(e) => store.updateSettings({ liveEpgUrl: e.target.value })}
+            value={liveEpgInput}
+            disabled={sourceDisabled}
+            allowClear
+            onChange={(e) => setLiveEpgInput(e.target.value)}
           />
         </Form.Item>
+        <Button type="primary" disabled={sourceDisabled} loading={store.sourceSaving} onClick={handleSaveLive}>保存直播设置</Button>
+        <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>留空并保存即可清空对应地址，未保存的修改不会生效。</Text>
       </Form>
 
       <Divider />
@@ -334,7 +380,7 @@ export default function SettingsDrawer({ onClose }) {
         <Button icon={<ExportOutlined />} onClick={() => setExportModalOpen(true)}>
           导出配置
         </Button>
-        <Button icon={<ImportOutlined />} onClick={() => setImportModalOpen(true)}>
+        <Button disabled={sourceDisabled} icon={<ImportOutlined />} onClick={() => setImportModalOpen(true)}>
           导入配置
         </Button>
       </Space>
@@ -365,11 +411,16 @@ export default function SettingsDrawer({ onClose }) {
       <Modal
         title="导入配置"
         open={importModalOpen}
+        confirmLoading={importing}
+        okButtonProps={{ disabled: sourceBusy && !importing }}
+        closable={!importing}
+        maskClosable={!importing}
         onOk={handleImport}
         onCancel={() => { setImportModalOpen(false); setImportPassword(''); setImportData('') }}
         okText="导入"
         cancelText="取消"
       >
+        <Alert type="warning" showIcon message="导入会覆盖文件中包含的服务器数据源字段，并影响其他设备；AI 密钥等偏好仍仅导入到此浏览器。" style={{ marginBottom: 16 }} />
         <Form layout="vertical">
           <Form.Item label="配置密码">
             <Input.Password

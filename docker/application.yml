@@ -16,6 +16,7 @@ logging:
     name: ${APP_LOG_FILE:/opt/playhub/logs/tvbox-webapp.log}
 
 app:
+  data-dir: ${APP_DATA_DIR:/opt/playhub/data}
   cache-dir: ${APP_CACHE_DIR:/opt/playhub/data/cache}
   spider-bridge-url: ${SPIDER_BRIDGE_URL:}
   node-command: ${NODE_COMMAND:node}

@@ -7,6 +7,7 @@ import com.tvbox.web.model.request.CategoryRequest;
 import com.tvbox.web.model.request.LoadConfigRequest;
 import com.tvbox.web.service.DiagLog;
 import com.tvbox.web.service.ProgressTrackerService;
+import com.tvbox.web.service.SourceSettingsService;
 import com.tvbox.web.service.TvboxFacadeService;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
@@ -33,10 +34,13 @@ public class TvboxController {
     private static final Logger log = LoggerFactory.getLogger(TvboxController.class);
     private final TvboxFacadeService facadeService;
     private final ProgressTrackerService progressTracker;
+    private final SourceSettingsService sourceSettingsService;
 
-    public TvboxController(TvboxFacadeService facadeService, ProgressTrackerService progressTracker) {
+    public TvboxController(TvboxFacadeService facadeService, ProgressTrackerService progressTracker,
+                           SourceSettingsService sourceSettingsService) {
         this.facadeService = facadeService;
         this.progressTracker = progressTracker;
+        this.sourceSettingsService = sourceSettingsService;
     }
 
     @PostMapping("/config/load")
@@ -45,13 +49,14 @@ public class TvboxController {
         long t0 = System.currentTimeMillis();
         DiagLog.step(log, "CTL config/load 入口  url=" + request.getUrl());
         String sessionId = session.getId();
-        ConfigPayload payload = facadeService.load(sessionId, request.getUrl());
+        ConfigPayload payload = facadeService.load(sessionId, request.getUrl(), request.isPersist());
         progressTracker.cancelActiveSearch(sessionId);
         DiagLog.step(log, "CTL config/load facadeService.load 返回", t0);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("ok", true);
         data.put("summary", facadeService.health(sessionId));
         data.put("config", stripConfig(payload));
+        data.put("sourceSettings", sourceSettingsService.getSettings());
         DiagLog.step(log, "CTL config/load stripConfig 完成, 即将返回", t0);
         return data;
     }
