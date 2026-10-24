@@ -46,6 +46,7 @@ public class TvboxController {
         DiagLog.step(log, "CTL config/load 入口  url=" + request.getUrl());
         String sessionId = session.getId();
         ConfigPayload payload = facadeService.load(sessionId, request.getUrl());
+        progressTracker.cancelActiveSearch(sessionId);
         DiagLog.step(log, "CTL config/load facadeService.load 返回", t0);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("ok", true);
@@ -126,30 +127,31 @@ public class TvboxController {
     @GetMapping("/search/all")
     public JsonNode searchAll(HttpSession session,
                               @RequestParam String wd,
-                              @RequestParam(defaultValue = "false") boolean quick) {
-        long t0 = System.currentTimeMillis();
-        DiagLog.step(log, "CTL searchAll 入口  wd=" + wd);
-
+                              @RequestParam(defaultValue = "false") boolean quick,
+                              @RequestParam(required = false) String key) {
         String sessionId = session.getId();
-        ConfigPayload payload = facadeService.getConfig(sessionId);
-        java.util.List<SiteDefinition> searchable = payload.getSites().stream()
-                .filter(s -> s != null && s.getSearchable() != 0)
-                .toList();
-
-        String progressId = progressTracker.createProgress(searchable.size());
+        java.util.List<SiteDefinition> sources = facadeService.searchableSources(sessionId, key);
+        String progressId = progressTracker.createSearchProgress(sources.size(), sessionId);
         ProgressTrackerService.ProgressInfo progress = progressTracker.getProgress(progressId);
-
-        // Process in background
-        java.util.concurrent.CompletableFuture.runAsync(() -> {
-            facadeService.searchAllBackground(sessionId, wd, quick, progress);
-            if (progress != null) progress.setDone(true);
-            DiagLog.step(log, "CTL searchAll 后台完成 progressId=" + progressId);
-        });
-
-        com.fasterxml.jackson.databind.node.ObjectNode response = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+        try {
+            facadeService.searchAllBackground(sessionId, wd, quick, sources, progress);
+        } catch (RuntimeException ex) {
+            progress.fail(ex.getMessage() == null ? "搜索启动失败" : ex.getMessage());
+        }
+        com.fasterxml.jackson.databind.node.ObjectNode response =
+                com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
         response.put("progressId", progressId);
-        DiagLog.step(log, "CTL searchAll 返回 progressId=" + progressId, t0);
         return response;
+    }
+
+    @PostMapping("/search/{id}/cancel")
+    public JsonNode cancelSearch(HttpSession session, @PathVariable String id) {
+        ProgressTrackerService.ProgressInfo progress = progressTracker.getProgress(id, session.getId());
+        if (progress == null) {
+            return com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode().put("found", false);
+        }
+        progress.cancel();
+        return progress.snapshot();
     }
 
     @GetMapping("/source/{key}/play")
@@ -177,7 +179,7 @@ public class TvboxController {
         }
 
         String sessionId = session.getId();
-        String progressId = progressTracker.createProgress(items.size());
+        String progressId = progressTracker.createProgress(items.size(), sessionId);
         ProgressTrackerService.ProgressInfo progress = progressTracker.getProgress(progressId);
 
         // Process in background thread
@@ -242,23 +244,11 @@ public class TvboxController {
     }
 
     @GetMapping("/progress/{id}")
-    public JsonNode getProgress(@PathVariable String id) {
-        ProgressTrackerService.ProgressInfo progress = progressTracker.getProgress(id);
-        com.fasterxml.jackson.databind.node.ObjectNode result = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    public JsonNode getProgress(HttpSession session, @PathVariable String id) {
+        ProgressTrackerService.ProgressInfo progress = progressTracker.getProgress(id, session.getId());
         if (progress == null) {
-            result.put("found", false);
-        } else {
-            result.put("found", true);
-            result.put("total", progress.getTotal());
-            result.put("completed", progress.getCompleted());
-            result.put("failed", progress.getFailed());
-            result.put("currentSource", progress.getCurrentSource());
-            result.put("done", progress.isDone());
-            if (progress.isDone() && !progress.getResults().isEmpty()) {
-                result.set("results", com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode().addAll(progress.getResults()));
-                progressTracker.removeProgress(id);
-            }
+            return com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode().put("found", false);
         }
-        return result;
+        return progress.snapshot();
     }
 }

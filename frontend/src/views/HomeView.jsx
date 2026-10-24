@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Input, Tabs, Typography, Spin, Empty, Button, AutoComplete } from 'antd'
-import { SearchOutlined, RobotOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { SearchOutlined, RobotOutlined, ClockCircleOutlined, StopOutlined } from '@ant-design/icons'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../stores/useStore'
@@ -20,6 +20,8 @@ export default function HomeView() {
   const navigate = useNavigate()
   const store = useStore()
   const [searchValue, setSearchValue] = useState('')
+
+  useEffect(() => () => useStore.getState().stopSearch(), [])
 
   useEffect(() => {
     if (store.bootstrapped && store.sources.length > 0 && store.wallVideos.length === 0 && !store.loading.wall) {
@@ -43,6 +45,7 @@ export default function HomeView() {
 
   const handleVideoClick = useCallback(
     (video) => {
+      useStore.getState().stopSearch()
       if (video.isGroup) {
         const sourceUid = video.sources?.[0]?.uid || ''
         const vodId = video.sources?.[0]?.vodId || ''
@@ -157,12 +160,17 @@ export default function HomeView() {
               display: 'flex',
               alignItems: 'center',
               gap: 12,
+              flexWrap: 'wrap',
             }}
           >
             <Spin size="small" />
             <Text style={{ fontWeight: 500 }}>
               正在搜索 {searchProgress.completed}/{searchProgress.total} 个源...
             </Text>
+            {searchProgress.failed > 0 && <Text type="secondary">失败或超时 {searchProgress.failed} 个源</Text>}
+            <Button icon={<StopOutlined />} size="small" onClick={store.stopSearch} style={{ marginLeft: 'auto' }}>
+              停止搜索
+            </Button>
           </div>
         )}
 
@@ -196,14 +204,25 @@ export default function HomeView() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
             }}
           >
             <Text style={{ fontSize: 13, color: 'var(--color-primary)' }}>
               搜索 "{searchKeyword}" 的结果 · {wallVideos.length} 个视频
+              {' · '}{searchProgress.cancelled ? '已停止' : searchProgress.error ? '搜索中断' : '已完成'}
+              {' '}{searchProgress.completed}/{searchProgress.total} 个源
+              {searchProgress.failed > 0 && ` · 失败或超时 ${searchProgress.failed} 个源`}
             </Text>
             <Button type="link" size="small" onClick={handleClearSearch}>
               清除搜索
             </Button>
+          </div>
+        )}
+
+        {isSearching && searchProgress.error && (
+          <div role="alert" style={{ marginTop: 10 }}>
+            <Text type="danger">{searchProgress.error}</Text>
           </div>
         )}
 
@@ -250,7 +269,7 @@ export default function HomeView() {
         <Empty
           description={
             <span>
-              {searchKeyword ? '未找到相关视频' : '暂无内容'}
+              {searchKeyword ? (searchProgress.cancelled ? '搜索已停止，暂无结果' : searchProgress.error ? '搜索未完成' : '未找到相关视频') : '暂无内容'}
               <br />
               <Text type="secondary" style={{ fontSize: 13 }}>
                 {searchKeyword ? '试试其他关键词' : '请在设置中加载配置'}

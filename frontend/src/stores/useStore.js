@@ -16,6 +16,30 @@ const SEARCH_HISTORY_KEY = 'playhub:search-history'
 const MAX_HISTORY = 120
 const MAX_SEARCH_HISTORY = 20
 const groupLinesCache = new Map()
+let activeSearch = null
+
+async function cancelRemoteSearch(run) {
+  if (!run.progressId || run.cancelSent) return
+  run.cancelSent = true
+  try {
+    await api.cancelSearch(run.progressId, { silentError: true, timeout: 5000 })
+  } catch (err) {
+    console.warn('停止后台搜索失败:', err.message)
+  }
+}
+
+function waitForSearchPoll(signal) {
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', finish)
+      resolve()
+    }
+    const timer = setTimeout(finish, 500)
+    signal.addEventListener('abort', finish, { once: true })
+    if (signal.aborted) finish()
+  })
+}
 
 function groupKey(entry) {
   if (!entry.isGroup) return `${entry.sourceUid}::${entry.vodId}`
@@ -47,7 +71,7 @@ function saveLS(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
 }
 
-async function aiMergeVideos(videos, settings, keyword) {
+async function aiMergeVideos(videos, settings, keyword, signal) {
   const names = [...new Set(videos.map((v) => v.name).filter(Boolean))]
   if (!names.length) return null
 
@@ -68,6 +92,7 @@ ${names.map((n, i) => `${i + 1}. ${n}`).join('\n')}`
   try {
     const res = await fetch(`${settings.aiUrl}/v1/chat/completions`, {
       method: 'POST',
+      signal,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${settings.aiKey}` },
       body: JSON.stringify({ model: settings.aiModel || 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.1 }),
     })
@@ -78,6 +103,7 @@ ${names.map((n, i) => `${i + 1}. ${n}`).join('\n')}`
     const parsed = JSON.parse(jsonMatch[0])
     return { mapping: parsed.mapping || parsed, best: parsed.best || '' }
   } catch (err) {
+    if (signal?.aborted) return null
     console.error('AI merge error:', err)
     return null
   }
@@ -136,7 +162,7 @@ export const useStore = create((set, get) => ({
   wallTitle: '',
   wallPagination: { page: 1, pageCount: 1, total: 0 },
   searchKeyword: '',
-  searchProgress: { active: false, total: 0, completed: 0, aiProcessing: false },
+  searchProgress: { active: false, total: 0, completed: 0, failed: 0, cancelled: false, error: '', aiProcessing: false },
   searchCache: null,
   searchHistory: loadLS(SEARCH_HISTORY_KEY, []),
 
@@ -181,6 +207,7 @@ export const useStore = create((set, get) => ({
   },
 
   async loadConfig(url) {
+    get().stopSearch()
     set((s) => ({ loading: { ...s.loading, config: true } }))
     try {
       const res = await api.loadConfig(url)
@@ -269,6 +296,7 @@ export const useStore = create((set, get) => ({
   },
 
   async loadHome() {
+    get().stopSearch()
     const source = get().getSelectedSource()
     if (!source) {
       set({ wallVideos: [], loading: { ...get().loading, wall: false } })
@@ -308,156 +336,109 @@ export const useStore = create((set, get) => ({
     }
   },
 
+  stopSearch() {
+    const run = activeSearch
+    if (!run) return
+    activeSearch = null
+    run.controller.abort()
+    void cancelRemoteSearch(run)
+    set((s) => ({
+      searchProgress: { ...s.searchProgress, active: false, aiProcessing: false, cancelled: true },
+      searchCache: { keyword: s.searchKeyword, videos: s.wallVideos },
+      loading: { ...s.loading, wall: false },
+    }))
+  },
+
   async searchVideos(keyword) {
     if (!keyword?.trim()) return
-    if (get().searchProgress.active) return
-
+    get().stopSearch()
     const kw = keyword.trim()
-    const scope = get().settings.searchScope
-    const { settings } = get()
+    const { settings, sources } = get()
+    const source = settings.searchScope === 'current' ? get().getSelectedSource() : null
+    const total = settings.searchScope === 'current' ? (source ? 1 : 0) : sources.filter((s) => s.searchable !== 0).length
     const useAI = settings.aiEnabled && settings.aiUrl && settings.aiKey
-
+    const run = { controller: new AbortController(), progressId: '', cancelSent: false }
+    activeSearch = run
+    const isCurrent = () => activeSearch === run && !run.controller.signal.aborted
     get().addSearchHistory(kw)
-
-    set({
+    set((s) => ({
       wallMode: 'search', searchKeyword: kw, wallTitle: `搜索: ${kw}`,
       wallVideos: [], searchCache: null,
-      searchProgress: { active: true, total: 0, completed: 0, aiProcessing: false },
-      loading: { ...get().loading, wall: true },
-    })
+      searchProgress: { active: true, total, completed: 0, failed: 0, cancelled: false, error: '', aiProcessing: false },
+      loading: { ...s.loading, wall: true },
+    }))
 
-    const targetSources = scope === 'current'
-      ? [get().getSelectedSource()].filter(Boolean)
-      : get().sources.filter((s) => s.searchable !== 0)
-
-    const total = targetSources.length
-    set((s) => ({ searchProgress: { ...s.searchProgress, total } }))
-
-    const searchWithTimeout = async (src) => {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 5000)
-      try {
-        const payload = await api.sourceSearch(src.uid, kw, false, { signal: controller.signal })
-        clearTimeout(timeout)
-        return normalizeList(payload).map((v) => normalizeVideoCard(v, src))
-      } catch {
-        clearTimeout(timeout)
-        return []
-      }
-    }
-
-    // Use backend multi-threaded searchAll for AI mode
-    if (useAI) {
-      try {
-        const response = await api.searchAll(kw)
-        const progressId = response.progressId
-
-        if (progressId) {
-          // Poll progress until done
-          const results = await new Promise((resolve) => {
-            const poll = async () => {
-              try {
-                const progress = await api.getProgress(progressId)
-                if (progress.found) {
-                  set((s) => ({ searchProgress: { ...s.searchProgress, completed: progress.completed, total: progress.total } }))
-                  if (progress.done) {
-                    resolve(progress.results || [])
-                  } else {
-                    setTimeout(poll, 300)
-                  }
-                } else {
-                  setTimeout(poll, 300)
-                }
-              } catch { setTimeout(poll, 300) }
-            }
-            poll()
-          })
-
-          const allCards = results.map((v) => normalizeVideoCard(v, { uid: v.source_uid || v.key, name: v.source_name || v.name }))
-
-          set((s) => ({ searchProgress: { ...s.searchProgress, aiProcessing: true } }))
-          const aiResult = await aiMergeVideos(allCards, settings, kw)
-          let finalVideos = allCards
-          if (aiResult) {
-            finalVideos = mergeVideosByName(allCards, aiResult.mapping)
-            if (aiResult.best) {
-              const bestIdx = finalVideos.findIndex((v) => v.name === aiResult.best)
-              if (bestIdx >= 0) finalVideos[bestIdx].isBestMatch = true
-            }
-          }
-          set({
-            wallVideos: finalVideos,
-            searchCache: { keyword: kw, videos: finalVideos },
-            searchProgress: { active: false, total, completed: total, aiProcessing: false },
-            loading: { ...get().loading, wall: false },
-          })
-          return
-        }
-      } catch (err) {
-        console.log('searchAll failed, falling back to frontend:', err.message)
-      }
-    }
-
-    // Frontend concurrent search (fallback or AI mode)
-    const allCards = []
-    let completed = 0
-    const queue = [...targetSources]
-    const concurrency = useAI ? 4 : 4
-
-    const worker = async () => {
-      while (queue.length > 0) {
-        const src = queue.shift()
-        if (!src) break
-        const cards = await searchWithTimeout(src)
-        allCards.push(...cards)
-        completed++
-        if (!useAI) {
-          set((s) => ({
-            wallVideos: [...allCards],
-            searchProgress: { ...s.searchProgress, completed },
-          }))
-        } else {
-          set((s) => ({ searchProgress: { ...s.searchProgress, completed } }))
-        }
-      }
-    }
-
-    const workers = Array.from({ length: Math.min(concurrency, queue.length) }, () => worker())
-    await Promise.allSettled(workers)
-
-    if (useAI) {
-      set((s) => ({ searchProgress: { ...s.searchProgress, aiProcessing: true } }))
-      try {
-        const aiResult = await aiMergeVideos(allCards, settings, kw)
-        let finalVideos = allCards
-        if (aiResult) {
-          finalVideos = mergeVideosByName(allCards, aiResult.mapping)
-          if (aiResult.best) {
-            const bestIdx = finalVideos.findIndex((v) => v.name === aiResult.best)
-            if (bestIdx >= 0) finalVideos[bestIdx].isBestMatch = true
-          }
-        }
-        set({
-          wallVideos: finalVideos,
-          searchCache: { keyword: kw, videos: finalVideos },
-          searchProgress: { active: false, total, completed, aiProcessing: false },
-          loading: { ...get().loading, wall: false },
-        })
-      } catch (err) {
-        console.error('AI merge error:', err)
-        set({
-          wallVideos: allCards,
-          searchCache: { keyword: kw, videos: allCards },
-          searchProgress: { active: false, total, completed, aiProcessing: false },
-          loading: { ...get().loading, wall: false },
-        })
-      }
-    } else {
-      set({
-        searchCache: { keyword: kw, videos: allCards },
-        searchProgress: { active: false, total, completed, aiProcessing: false },
-        loading: { ...get().loading, wall: false },
+    try {
+      if (settings.searchScope === 'current' && !source) throw new Error('请先选择视频源')
+      // Keep the start response readable after stopping so a late job ID can be cancelled.
+      const response = await api.searchAll(kw, false, {
+        silentError: true,
+        timeout: 15000,
+        params: source ? { key: source.uid } : {},
       })
+      run.progressId = response.progressId
+      if (!isCurrent()) {
+        await cancelRemoteSearch(run)
+        return
+      }
+      if (!run.progressId) throw new Error('搜索任务未成功创建')
+
+      let failures = 0
+      while (isCurrent()) {
+        let progress
+        try {
+          progress = await api.getProgress(run.progressId, { signal: run.controller.signal, silentError: true, timeout: 5000 })
+          failures = 0
+        } catch (err) {
+          if (!isCurrent()) return
+          failures++
+          if (failures >= 3) throw new Error(`获取搜索进度失败：${err.message || '网络错误'}`)
+          await waitForSearchPoll(run.controller.signal)
+          continue
+        }
+        if (!isCurrent()) return
+        if (!progress.found) throw new Error('搜索任务已失效，请重新搜索')
+        const cards = (progress.results || []).map((v) => normalizeVideoCard(v, {
+          uid: v.source_uid || v.key,
+          name: v.source_name || v.name,
+        }))
+        set((s) => ({
+          wallVideos: cards,
+          searchProgress: {
+            ...s.searchProgress,
+            total: progress.total, completed: progress.completed, failed: progress.failed || 0,
+            cancelled: Boolean(progress.cancelled), error: progress.error || '',
+          },
+        }))
+        if (progress.error) throw new Error(progress.error)
+        if (progress.done || progress.cancelled) break
+        await waitForSearchPoll(run.controller.signal)
+      }
+      if (!isCurrent()) return
+      if (useAI && !get().searchProgress.cancelled) {
+        set((s) => ({ searchProgress: { ...s.searchProgress, aiProcessing: true } }))
+        const aiResult = await aiMergeVideos(get().wallVideos, settings, kw, run.controller.signal)
+        if (!isCurrent()) return
+        if (aiResult) {
+          const videos = mergeVideosByName(get().wallVideos, aiResult.mapping)
+          const best = videos.find((v) => v.name === aiResult.best)
+          if (best) best.isBestMatch = true
+          set({ wallVideos: videos })
+        }
+      }
+    } catch (err) {
+      if (!isCurrent()) return
+      set((s) => ({ searchProgress: { ...s.searchProgress, error: err.message || '搜索失败' } }))
+      void cancelRemoteSearch(run)
+    } finally {
+      if (isCurrent()) {
+        activeSearch = null
+        set((s) => ({
+          searchCache: { keyword: kw, videos: s.wallVideos },
+          searchProgress: { ...s.searchProgress, active: false, aiProcessing: false },
+          loading: { ...s.loading, wall: false },
+        }))
+      }
     }
   },
 

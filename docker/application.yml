@@ -24,6 +24,8 @@ app:
   spider-operation-timeout-seconds: ${APP_SPIDER_OPERATION_TIMEOUT_SECONDS:25}
   spider-operation-max-concurrency: ${APP_SPIDER_OPERATION_MAX_CONCURRENCY:2}
   spider-operation-queue-capacity: ${APP_SPIDER_OPERATION_QUEUE_CAPACITY:4}
+  search-max-concurrency: ${APP_SEARCH_MAX_CONCURRENCY:2}
+  search-timeout-seconds: ${APP_SEARCH_TIMEOUT_SECONDS:10}
   spider-cache-max-classloaders: ${APP_SPIDER_CACHE_MAX_CLASSLOADERS:8}
   spider-cache-max-spiders: ${APP_SPIDER_CACHE_MAX_SPIDERS:32}
   script-max-concurrency: ${APP_SCRIPT_MAX_CONCURRENCY:2}

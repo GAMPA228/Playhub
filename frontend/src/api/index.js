@@ -47,10 +47,15 @@ export function sourcePlay(key, flag, id) {
   })
 }
 
-export function searchAll(wd, quick = false) {
+export function searchAll(wd, quick = false, config = {}) {
   return getJson('/api/search/all', {
-    params: { wd, quick },
+    ...config,
+    params: { wd, quick, ...config.params },
   })
+}
+
+export function cancelSearch(id, config = {}) {
+  return postJson(`/api/search/${encodeURIComponent(id)}/cancel`, {}, config)
 }
 
 export function liveBootstrap(playlistUrl, epgUrl) {
@@ -61,6 +66,6 @@ export function batchDetail(items) {
   return postJson('/api/batch/detail', { items })
 }
 
-export function getProgress(id) {
-  return getJson(`/api/progress/${id}`)
+export function getProgress(id, config = {}) {
+  return getJson(`/api/progress/${encodeURIComponent(id)}`, config)
 }

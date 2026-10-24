@@ -60,6 +60,7 @@ public class ScriptSpiderService implements InitializingBean {
     private volatile String resolvedNodeCommand;
     private volatile String resolvedPythonCommand;
     private Semaphore scriptSlots;
+    private Semaphore scriptSearchSlots;
 
     public ScriptSpiderService(AppPathsService appPathsService,
                                ConfigService configService,
@@ -75,6 +76,7 @@ public class ScriptSpiderService implements InitializingBean {
         int defaultConcurrency = Math.max(1, Math.min(2, Runtime.getRuntime().availableProcessors()));
         int concurrency = Math.max(1, scriptMaxConcurrency > 0 ? scriptMaxConcurrency : defaultConcurrency);
         this.scriptSlots = new Semaphore(concurrency, true);
+        this.scriptSearchSlots = new Semaphore(Math.max(1, concurrency - 1), true);
     }
 
     public boolean supports(SiteDefinition site) {
@@ -256,6 +258,20 @@ public class ScriptSpiderService implements InitializingBean {
     }
 
     private String runProcess(List<String> command, JsonNode payload) throws IOException, InterruptedException {
+        boolean search = "search".equals(payload.path("action").asText());
+        if (search && !scriptSearchSlots.tryAcquire(Math.max(1L, scriptAdmissionTimeoutSeconds), TimeUnit.SECONDS)) {
+            throw new IllegalStateException("script search executor busy");
+        }
+        try {
+            return runAdmittedProcess(command, payload);
+        } finally {
+            if (search) {
+                scriptSearchSlots.release();
+            }
+        }
+    }
+
+    private String runAdmittedProcess(List<String> command, JsonNode payload) throws IOException, InterruptedException {
         Semaphore slots = scriptSlots;
         if (slots == null) {
             throw new IllegalStateException("script slots not initialized");

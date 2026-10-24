@@ -1,4 +1,4 @@
-import{_ as lr,Z as v}from"./antd-vendor-sshdFujG.js";var ne={exports:{}},gt={};/**
+import{$ as lr,_ as v}from"./antd-vendor-BjYLkEfX.js";var ne={exports:{}},gt={};/**
  * @license React
  * react-jsx-runtime.production.min.js
  *

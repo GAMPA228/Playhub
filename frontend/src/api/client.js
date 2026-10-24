@@ -30,7 +30,7 @@ export function initMessageHandler() {
       const status = err.response?.status || 0
       if (status === 400 && msg.includes('配置')) {
         // Config-related errors handled by components
-      } else {
+      } else if (!err.config?.silentError) {
         message.error(msg, 3)
       }
 

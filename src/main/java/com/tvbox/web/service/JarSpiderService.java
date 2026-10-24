@@ -54,7 +54,6 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -103,6 +102,12 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
     @Value("${app.spider-operation-queue-capacity:8}")
     private int spiderOperationQueueCapacity;
 
+    @Value("${app.search-max-concurrency:2}")
+    private int searchMaxConcurrency = 2;
+
+    @Value("${app.search-timeout-seconds:10}")
+    private long searchTimeoutSeconds = 10;
+
     @Value("${app.spider-cache-max-classloaders:12}")
     private int spiderCacheMaxClassloaders;
 
@@ -117,8 +122,8 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
     private BoundedCache<String, String> spiderRuntimeKeyMap;
     private BoundedCache<String, String> siteRuntimeKeyMap;
     private BoundedCache<String, String> recentProxyRuntimeKeyMap;
-    private ExecutorService spiderOperationExecutor;
     private ThreadPoolExecutor spiderOperationThreadPool;
+    private ThreadPoolExecutor spiderSearchThreadPool;
     private final Application androidApplication = new Application();
     private final Activity androidContext = new Activity();
 
@@ -139,22 +144,9 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
         int defaultConcurrency = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors()));
         int concurrency = Math.max(1, spiderOperationMaxConcurrency > 0 ? spiderOperationMaxConcurrency : defaultConcurrency);
         int queueCapacity = Math.max(1, spiderOperationQueueCapacity);
-        BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(queueCapacity);
-        ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                concurrency,
-                concurrency,
-                30L,
-                TimeUnit.SECONDS,
-                queue,
-                runnable -> {
-                    Thread thread = new Thread(runnable, "tvbox-spider-op-" + SPIDER_THREAD_COUNTER.incrementAndGet());
-                    thread.setDaemon(true);
-                    return thread;
-                },
-                new ThreadPoolExecutor.AbortPolicy());
-        executor.allowCoreThreadTimeOut(false);
-        this.spiderOperationThreadPool = executor;
-        this.spiderOperationExecutor = executor;
+        this.spiderOperationThreadPool = createOperationPool(concurrency, queueCapacity, "tvbox-spider-op-");
+        int searchConcurrency = Math.max(1, searchMaxConcurrency);
+        this.spiderSearchThreadPool = createOperationPool(searchConcurrency, searchConcurrency, "tvbox-spider-search-");
 
         int maxClassloaders = Math.max(4, spiderCacheMaxClassloaders);
         int maxSpiders = Math.max(8, spiderCacheMaxSpiders);
@@ -166,6 +158,24 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
         this.spiderRuntimeKeyMap = new BoundedCache<>(maxSpiders * 2);
         this.siteRuntimeKeyMap = new BoundedCache<>(maxSpiders * 3);
         this.recentProxyRuntimeKeyMap = new BoundedCache<>(maxClassloaders);
+    }
+
+    private ThreadPoolExecutor createOperationPool(int concurrency, int queueCapacity, String threadPrefix) {
+        BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(queueCapacity);
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                concurrency,
+                concurrency,
+                30L,
+                TimeUnit.SECONDS,
+                queue,
+                runnable -> {
+                    Thread thread = new Thread(runnable, threadPrefix + SPIDER_THREAD_COUNTER.incrementAndGet());
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
+        executor.allowCoreThreadTimeOut(true);
+        return executor;
     }
 
     private void closeLoader(URLClassLoader loader) {
@@ -394,7 +404,9 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
 
     private JsonNode executeWithFallback(SiteDefinition site, Supplier<JsonNode> localExecutor, Supplier<JsonNode> bridgeExecutor, boolean allowBridgeFallback) {
         try {
+            checkOperationInterrupted();
             JsonNode result = localExecutor.get();
+            checkOperationInterrupted();
             // If result is empty/useless and bridge is available, try bridge
             if (isResultEmpty(result) && allowBridgeFallback && spiderBridgeService.enabled()) {
                 DiagLog.step(log, "JAR 本地结果为空, 尝试bridge回退");
@@ -405,16 +417,22 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
                         return bridgeResult;
                     }
                 } catch (Throwable ex) {
+                    checkOperationInterrupted(ex);
                     DiagLog.step(log, "JAR bridge回退也失败: " + ex.getMessage());
                 }
             }
             return result;
         } catch (IllegalStateException ex) {
+            if (ex instanceof SpiderOperationUnavailableException) {
+                throw ex;
+            }
+            checkOperationInterrupted(ex);
             if (allowBridgeFallback && spiderBridgeService.enabled()) {
                 DiagLog.step(log, "JAR 本地执行异常, 尝试bridge回退");
                 try {
                     return bridgeExecutor.get();
                 } catch (Throwable bridgeEx) {
+                    checkOperationInterrupted(bridgeEx);
                     DiagLog.step(log, "JAR bridge回退失败: " + bridgeEx.getMessage());
                 }
             }
@@ -433,15 +451,27 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
     }
 
     private <T> T executeSpiderOperation(String sessionId, SiteDefinition site, String operationName, Function<Object, T> operation) {
+        // Initialization/downloads must use the same bounded lane and deadline as the plugin call.
+        return runSpiderOperationWithTimeout(site, operationName,
+                () -> executeSpiderOperationDirect(sessionId, site, operationName, operation));
+    }
+
+    private <T> T executeSpiderOperationDirect(String sessionId, SiteDefinition site, String operationName, Function<Object, T> operation) {
         long t0 = System.currentTimeMillis();
         DiagLog.step(log, "JAR executeSpiderOperation 开始 op=" + operationName + " site=" + site.getKey());
         try {
+            checkOperationInterrupted();
             Object spider = getOrCreateSpider(sessionId, site, false);
+            checkOperationInterrupted();
             DiagLog.step(log, "JAR getOrCreateSpider 返回 (正常模式)", t0);
-            T result = runSpiderOperationWithTimeout(site, operationName, () -> operation.apply(spider));
+            T result = operation.apply(spider);
             DiagLog.step(log, "JAR executeSpiderOperation 完成 op=" + operationName, t0);
             return result;
         } catch (Throwable ex) {
+            checkOperationInterrupted(ex);
+            if (ex instanceof SpiderOperationUnavailableException unavailable) {
+                throw unavailable;
+            }
             if (!isJvmCompatibilityFailure(ex)) {
                 DiagLog.step(log, "JAR executeSpiderOperation 失败(非JVM兼容): " + ex.getMessage(), t0);
                 throw new IllegalStateException("Spider 调用失败: " + ex.getMessage(), ex);
@@ -449,11 +479,13 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
             DiagLog.step(log, "JAR executeSpiderOperation JVM兼容失败, 重试兼容模式", t0);
             try {
                 Object spider = getOrCreateSpider(sessionId, site, true);
+                checkOperationInterrupted();
                 DiagLog.step(log, "JAR getOrCreateSpider 返回 (兼容模式)", t0);
-                T result = runSpiderOperationWithTimeout(site, operationName, () -> operation.apply(spider));
+                T result = operation.apply(spider);
                 DiagLog.step(log, "JAR executeSpiderOperation 完成(兼容模式) op=" + operationName, t0);
                 return result;
             } catch (Throwable retry) {
+                checkOperationInterrupted(retry);
                 if (retry instanceof RuntimeException runtimeException) {
                     throw runtimeException;
                 }
@@ -462,8 +494,10 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
         }
     }
 
-    private <T> T runSpiderOperationWithTimeout(SiteDefinition site, String operationName, Callable<T> callable) throws Exception {
-        ExecutorService executor = spiderOperationExecutor;
+    private <T> T runSpiderOperationWithTimeout(SiteDefinition site, String operationName, Callable<T> callable) {
+        checkOperationInterrupted();
+        boolean search = "search".equals(operationName);
+        ThreadPoolExecutor executor = search ? spiderSearchThreadPool : spiderOperationThreadPool;
         if (executor == null) {
             throw new IllegalStateException("Spider executor not initialized");
         }
@@ -471,30 +505,64 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
         try {
             future = executor.submit(callable);
         } catch (RejectedExecutionException ex) {
-            throw new IllegalStateException("Spider executor busy: " + spiderExecutorStats(), ex);
+            throw new SpiderOperationUnavailableException("Spider " + (search ? "search " : "")
+                    + "executor busy: " + spiderExecutorStats(executor), ex);
         }
         try {
-            long timeoutSeconds = Math.max(1L, spiderOperationTimeoutSeconds);
+            long timeoutSeconds = Math.max(1L, search ? searchTimeoutSeconds : spiderOperationTimeoutSeconds);
             return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (TimeoutException ex) {
-            future.cancel(true);
+            cancelOperation(executor, future);
             String siteLabel = firstNonBlank(site == null ? null : site.getName(),
                     site == null ? null : site.getKey(),
                     site == null ? null : site.getApi(),
                     "unknown");
-            throw new IllegalStateException("Spider 调用超时(" + spiderOperationTimeoutSeconds + "s): " + siteLabel + " / " + operationName, ex);
+            throw new SpiderOperationUnavailableException("Spider 调用超时("
+                    + (search ? searchTimeoutSeconds : spiderOperationTimeoutSeconds) + "s): " + siteLabel + " / " + operationName, ex);
         } catch (java.util.concurrent.ExecutionException ex) {
             Throwable cause = ex.getCause();
-            if (cause instanceof Exception exception) {
-                throw exception;
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
             }
             if (cause instanceof Error error) {
                 throw error;
             }
             throw new IllegalStateException("Spider 调用失败: " + ex.getMessage(), ex);
         } catch (InterruptedException ex) {
+            cancelOperation(executor, future);
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Spider 调用被中断", ex);
+            throw new SpiderOperationUnavailableException("Spider 调用被中断", ex);
+        }
+    }
+
+    private void cancelOperation(ThreadPoolExecutor executor, Future<?> future) {
+        future.cancel(true);
+        if (future instanceof Runnable queued) {
+            executor.remove(queued);
+        }
+    }
+
+    private void checkOperationInterrupted() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new SpiderOperationUnavailableException("Spider 调用被中断", null);
+        }
+    }
+
+    private void checkOperationInterrupted(Throwable failure) {
+        Throwable current = failure;
+        for (int i = 0; current != null && i < 16; i++) {
+            if (current instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            current = current.getCause();
+        }
+        checkOperationInterrupted();
+    }
+
+    private static class SpiderOperationUnavailableException extends IllegalStateException {
+        SpiderOperationUnavailableException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 
@@ -532,6 +600,7 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
         String lastError = "";
 
         for (String className : classNames) {
+            checkOperationInterrupted();
             DiagLog.step(log, "JAR 尝试加载 className=" + className);
             try {
                 if (jarPath == null) {
@@ -547,6 +616,7 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
                 DiagLog.step(log, "JAR instantiateSpider 成功  className=" + className, t0);
                 break;
             } catch (Throwable ex) {
+                checkOperationInterrupted(ex);
                 String msg = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getName();
                 lastError = className + " -> " + (msg.length() > 60 ? msg.substring(0, 60) : msg);
                 DiagLog.step(log, "JAR className尝试失败: " + lastError);
@@ -1281,8 +1351,11 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
 
     @Override
     public void destroy() {
-        if (spiderOperationExecutor != null) {
-            spiderOperationExecutor.shutdownNow();
+        if (spiderOperationThreadPool != null) {
+            spiderOperationThreadPool.shutdownNow();
+        }
+        if (spiderSearchThreadPool != null) {
+            spiderSearchThreadPool.shutdownNow();
         }
         if (classLoaderMap != null) classLoaderMap.clear();
         if (spiderMap != null) spiderMap.clear();
@@ -1294,8 +1367,7 @@ public class JarSpiderService implements DisposableBean, InitializingBean {
         if (recentProxyRuntimeKeyMap != null) recentProxyRuntimeKeyMap.clear();
     }
 
-    private String spiderExecutorStats() {
-        ThreadPoolExecutor executor = spiderOperationThreadPool;
+    private String spiderExecutorStats(ThreadPoolExecutor executor) {
         if (executor == null) {
             return "executor=uninitialized";
         }

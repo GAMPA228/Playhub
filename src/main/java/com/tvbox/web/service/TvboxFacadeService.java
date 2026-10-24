@@ -8,17 +8,30 @@ import com.tvbox.web.model.ConfigPayload;
 import com.tvbox.web.model.SiteDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
-public class TvboxFacadeService {
+public class TvboxFacadeService implements InitializingBean, DisposableBean {
 
     private static final Logger log = LoggerFactory.getLogger(TvboxFacadeService.class);
     private static final Pattern PLAY_URL_PREFIX_PATTERN = Pattern.compile("^[^,，]{1,30}[,，](.+)$");
@@ -28,6 +41,44 @@ public class TvboxFacadeService {
     private final HttpSourceService httpSourceService;
     private final JarSpiderService jarSpiderService;
     private final BoundedCache<PlayCacheKey, CachedPlayResult> playCache = new BoundedCache<>(512);
+
+    @Value("${app.search-max-concurrency:2}")
+    private int searchMaxConcurrency = 2;
+
+    @Value("${app.search-timeout-seconds:10}")
+    private long searchTimeoutSeconds = 10;
+
+    private ThreadPoolExecutor searchSourceExecutor;
+    private ThreadPoolExecutor searchJobExecutor;
+
+    @Override
+    public void afterPropertiesSet() {
+        int concurrency = Math.max(1, searchMaxConcurrency);
+        searchSourceExecutor = createSearchExecutor(concurrency, concurrency, "tvbox-search-source-");
+        searchJobExecutor = createSearchExecutor(concurrency, concurrency * 4, "tvbox-search-job-");
+    }
+
+    private ThreadPoolExecutor createSearchExecutor(int concurrency, int capacity, String prefix) {
+        AtomicInteger counter = new AtomicInteger();
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(concurrency, concurrency, 30, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(capacity), runnable -> {
+                    Thread thread = new Thread(runnable, prefix + counter.incrementAndGet());
+                    thread.setDaemon(true);
+                    return thread;
+                }, new ThreadPoolExecutor.AbortPolicy());
+        executor.allowCoreThreadTimeOut(true);
+        return executor;
+    }
+
+    @Override
+    public void destroy() {
+        if (searchJobExecutor != null) {
+            searchJobExecutor.shutdownNow();
+        }
+        if (searchSourceExecutor != null) {
+            searchSourceExecutor.shutdownNow();
+        }
+    }
 
     // 每次加载配置都会创建新的站点实例，避免复用 s0、s1 等 UID 时命中旧配置缓存。
     private record PlayCacheKey(String sessionId, SiteDefinition site, String flag, String id) {
@@ -222,7 +273,10 @@ public class TvboxFacadeService {
     }
 
     public JsonNode search(String sessionId, String key, String wd, boolean quick) {
-        SiteDefinition site = getSite(sessionId, key);
+        return searchWithTimeout(sessionId, getSite(sessionId, key), wd, quick, null);
+    }
+
+    private JsonNode searchSource(String sessionId, SiteDefinition site, String wd, boolean quick) {
         if (site.getType() == 3) {
             return jarSpiderService.search(sessionId, site, wd, quick);
         }
@@ -235,147 +289,175 @@ public class TvboxFacadeService {
         return httpSourceService.request(site, params);
     }
 
+    private JsonNode searchWithTimeout(String sessionId, SiteDefinition site, String wd, boolean quick,
+                                       ProgressTrackerService.ProgressInfo progress) {
+        ThreadPoolExecutor executor = searchSourceExecutor;
+        if (executor == null) {
+            throw new IllegalStateException("搜索执行器未初始化");
+        }
+        FutureTask<JsonNode> future = new FutureTask<>(() -> searchSource(sessionId, site, wd, quick));
+        Runnable cancel = () -> {
+            future.cancel(true);
+            executor.remove(future);
+        };
+        if (Thread.currentThread().isInterrupted()
+                || (progress != null && !progress.addCancelHook(cancel))) {
+            cancel.run();
+            throw new CancellationException("搜索已停止");
+        }
+        try {
+            executor.execute(future);
+            if (future.isCancelled()) {
+                executor.remove(future);
+            }
+            JsonNode result = future.get(Math.max(1, searchTimeoutSeconds), TimeUnit.SECONDS);
+            if (result != null) {
+                boolean explicitFailure = result.path("ok").isBoolean() && !result.path("ok").asBoolean();
+                String remoteError = result.path("error").isTextual() ? result.path("error").asText() : "";
+                if (explicitFailure || StringUtils.hasText(remoteError)) {
+                    throw new IllegalStateException(StringUtils.hasText(remoteError) ? remoteError : "源搜索失败");
+                }
+            }
+            return result;
+        } catch (RejectedExecutionException ex) {
+            cancel.run();
+            throw new IllegalStateException("搜索执行器繁忙，请稍后重试", ex);
+        } catch (TimeoutException ex) {
+            cancel.run();
+            throw new IllegalStateException("搜索超时(" + searchTimeoutSeconds + "s): " + site.getName(), ex);
+        } catch (InterruptedException ex) {
+            cancel.run();
+            Thread.currentThread().interrupt();
+            throw new CancellationException("搜索已停止");
+        } catch (ExecutionException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException("搜索失败: " + cause.getMessage(), cause);
+        } finally {
+            if (progress != null) {
+                progress.removeCancelHook(cancel);
+            }
+        }
+    }
+
+    public List<SiteDefinition> searchableSources(String sessionId, String key) {
+        if (StringUtils.hasText(key)) {
+            return List.of(getSite(sessionId, key));
+        }
+        return getConfig(sessionId).getSites().stream()
+                .filter(site -> site != null && site.getSearchable() != 0)
+                .toList();
+    }
+
     public JsonNode searchAll(String wd, boolean quick) {
         return searchAll(null, wd, quick);
     }
 
     public void searchAllBackground(String sessionId, String wd, boolean quick,
                                      ProgressTrackerService.ProgressInfo progress) {
-        long t0 = System.currentTimeMillis();
-        DiagLog.step(log, "FAC searchAllBackground 多线程入口 wd=" + wd);
-        ConfigPayload payload = getConfig(sessionId);
+        searchAllBackground(sessionId, wd, quick, searchableSources(sessionId, null), progress);
+    }
 
-        List<SiteDefinition> searchable = payload.getSites().stream()
-                .filter(s -> s != null && s.getSearchable() != 0)
-                .toList();
-
-        if (searchable.isEmpty()) {
-            if (progress != null) progress.setDone(true);
+    public void searchAllBackground(String sessionId, String wd, boolean quick, List<SiteDefinition> sources,
+                                     ProgressTrackerService.ProgressInfo progress) {
+        if (progress == null) {
+            throw new IllegalArgumentException("搜索进度不能为空");
+        }
+        if (sources.isEmpty()) {
+            progress.setDone(true);
             return;
         }
-
-        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(
-                Math.min(searchable.size(), 6));
-        JsonNodeFactory factory = JsonNodeFactory.instance;
-
-        java.util.List<java.util.concurrent.CompletableFuture<Void>> futures = new java.util.ArrayList<>();
-
-        for (SiteDefinition site : searchable) {
-            futures.add(java.util.concurrent.CompletableFuture.runAsync(() -> {
-                if (progress != null) progress.setCurrentSource(site.getName());
+        AtomicInteger next = new AtomicInteger();
+        int workerCount = Math.min(Math.max(1, searchMaxConcurrency), sources.size());
+        AtomicInteger remaining = new AtomicInteger(workerCount);
+        for (int i = 0; i < workerCount; i++) {
+            FutureTask<Void> worker = new FutureTask<>(() -> {
                 try {
-                    JsonNode response = search(sessionId, site.getUid(), wd, quick);
-                    List<JsonNode> items = extractList(response);
-                    synchronized (progress) {
-                        for (JsonNode item : items) {
-                            ObjectNode row = (item != null && item.isObject())
-                                    ? ((ObjectNode) item).deepCopy()
-                                    : factory.objectNode();
-                            if (!item.isObject()) row.set("raw", item);
-                            row.put("source_uid", site.getUid());
-                            row.put("source_key", site.getApi());
-                            row.put("source_name", site.getName());
-                            row.put("source_type", site.getType());
-                            progress.addResult(row);
+                    while (!Thread.currentThread().isInterrupted() && progress.isActive()) {
+                        int index = next.getAndIncrement();
+                        if (index >= sources.size()) {
+                            break;
                         }
-                        progress.incrementCompleted();
+                        SiteDefinition site = sources.get(index);
+                        progress.setCurrentSource(site.getName());
+                        try {
+                            JsonNode response = searchWithTimeout(sessionId, site, wd, quick, progress);
+                            progress.completeSource(searchRows(response, site), false);
+                        } catch (CancellationException ex) {
+                            break;
+                        } catch (RuntimeException ex) {
+                            log.info("[SEARCH] source={} failed: {}", site.getName(), ex.getMessage());
+                            progress.completeSource(List.of(), true);
+                        }
                     }
-                } catch (Throwable ex) {
-                    synchronized (progress) {
-                        ObjectNode err = factory.objectNode();
-                        err.put("source_uid", site.getUid());
-                        err.put("source_name", site.getName());
-                        err.put("error", ex.getMessage() == null ? "unknown" : ex.getMessage());
-                        progress.addResult(err);
-                        progress.incrementCompleted();
-                        progress.incrementFailed();
+                } finally {
+                    if (remaining.decrementAndGet() == 0) {
+                        progress.setDone(true);
                     }
                 }
-            }, executor));
-        }
-
-        for (java.util.concurrent.CompletableFuture<Void> f : futures) {
+                return null;
+            });
+            Runnable cancel = () -> {
+                worker.cancel(true);
+                searchJobExecutor.remove(worker);
+            };
+            if (!progress.addCancelHook(cancel)) {
+                return;
+            }
             try {
-                f.get(8, java.util.concurrent.TimeUnit.SECONDS);
-            } catch (Exception e) {
-                // timeout, skip
+                searchJobExecutor.execute(worker);
+                if (worker.isCancelled()) {
+                    searchJobExecutor.remove(worker);
+                }
+            } catch (RejectedExecutionException ex) {
+                progress.fail("搜索任务繁忙，请稍后重试");
+                return;
             }
         }
-        executor.shutdown();
+    }
 
-        int total = progress != null ? progress.getResults().size() : 0;
-        DiagLog.step(log, "FAC searchAllBackground 完成 totalResults=" + total, t0);
+    private List<JsonNode> searchRows(JsonNode response, SiteDefinition site) {
+        List<JsonNode> rows = new ArrayList<>();
+        for (JsonNode item : extractList(response)) {
+            ObjectNode row = item != null && item.isObject()
+                    ? ((ObjectNode) item).deepCopy() : JsonNodeFactory.instance.objectNode();
+            if (item == null || !item.isObject()) {
+                row.set("raw", item);
+            }
+            row.put("source_uid", site.getUid());
+            row.put("source_key", site.getApi());
+            row.put("source_name", site.getName());
+            row.put("source_type", site.getType());
+            rows.add(row);
+        }
+        return rows;
     }
 
     public JsonNode searchAll(String sessionId, String wd, boolean quick) {
-        long t0 = System.currentTimeMillis();
-        DiagLog.step(log, "FAC searchAll 多线程入口 wd=" + wd);
-        ConfigPayload payload = getConfig(sessionId);
+        List<SiteDefinition> sources = searchableSources(sessionId, null);
         ObjectNode root = JsonNodeFactory.instance.objectNode();
         ArrayNode list = root.putArray("list");
         ArrayNode errors = root.putArray("errors");
-
-        List<SiteDefinition> searchable = payload.getSites().stream()
-                .filter(s -> s != null && s.getSearchable() != 0)
-                .toList();
-
-        if (searchable.isEmpty()) {
-            root.put("searched", 0);
-            root.put("hits", 0);
-            root.put("failed", 0);
-            return root;
-        }
-
-        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(
-                Math.min(searchable.size(), 6));
-
-        JsonNodeFactory factory = JsonNodeFactory.instance;
-        java.util.List<java.util.concurrent.CompletableFuture<Void>> futures = new java.util.ArrayList<>();
-
-        for (SiteDefinition site : searchable) {
-            futures.add(java.util.concurrent.CompletableFuture.runAsync(() -> {
-                try {
-                    JsonNode response = search(sessionId, site.getUid(), wd, quick);
-                    List<JsonNode> items = extractList(response);
-                    synchronized (list) {
-                        for (JsonNode item : items) {
-                            ObjectNode row = (item != null && item.isObject())
-                                    ? ((ObjectNode) item).deepCopy()
-                                    : factory.objectNode();
-                            if (!item.isObject()) row.set("raw", item);
-                            row.put("source_uid", site.getUid());
-                            row.put("source_key", site.getApi());
-                            row.put("source_name", site.getName());
-                            row.put("source_type", site.getType());
-                            list.add(row);
-                        }
-                    }
-                } catch (Throwable ex) {
-                    synchronized (errors) {
-                        ObjectNode err = factory.objectNode();
-                        err.put("source_uid", site.getUid());
-                        err.put("source_key", site.getApi());
-                        err.put("source_name", site.getName());
-                        err.put("error", ex.getMessage() == null ? "unknown" : ex.getMessage());
-                        errors.add(err);
-                    }
-                }
-            }, executor));
-        }
-
-        for (java.util.concurrent.CompletableFuture<Void> f : futures) {
+        for (SiteDefinition site : sources) {
+            if (Thread.currentThread().isInterrupted()) {
+                break;
+            }
             try {
-                f.get(8, java.util.concurrent.TimeUnit.SECONDS);
-            } catch (Exception e) {
-                // timeout, skip
+                list.addAll(searchRows(searchWithTimeout(sessionId, site, wd, quick, null), site));
+            } catch (CancellationException ex) {
+                break;
+            } catch (RuntimeException ex) {
+                ObjectNode error = errors.addObject();
+                error.put("source_uid", site.getUid());
+                error.put("source_name", site.getName());
+                error.put("error", ex.getMessage());
             }
         }
-        executor.shutdown();
-
-        root.put("searched", searchable.size());
+        root.put("searched", sources.size());
         root.put("hits", list.size());
         root.put("failed", errors.size());
-        DiagLog.step(log, "FAC searchAll 完成 hits=" + list.size() + " failed=" + errors.size(), t0);
         return root;
     }
 
