@@ -53,6 +53,8 @@ export default function HistoryView() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 16,
         }}
       >
         <div>

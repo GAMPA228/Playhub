@@ -258,7 +258,7 @@ export default function DetailView() {
               )}
             </div>
 
-            <div style={{ flex: 1, minWidth: 300, padding: '28px 32px' }}>
+            <div style={{ flex: '1 1 300px', minWidth: 0, padding: '28px 32px' }}>
               <Title level={2} style={{ margin: '0 0 12px', fontWeight: 700 }}>{groupDetail?.name || wallVideo?.name || historyEntry?.title || ''}</Title>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
                 {groupDetail?.type && <Tag color="processing" style={{ borderRadius: 6 }}>{groupDetail.type}</Tag>}
@@ -411,7 +411,7 @@ export default function DetailView() {
             )}
           </div>
 
-          <div style={{ flex: 1, minWidth: 300, padding: '28px 32px' }}>
+          <div style={{ flex: '1 1 300px', minWidth: 0, padding: '28px 32px' }}>
             <Title level={2} style={{ margin: '0 0 12px', fontWeight: 700 }}>{detail.name}</Title>
             {meta && <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>{meta}</Text>}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>

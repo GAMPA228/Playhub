@@ -115,6 +115,8 @@ Compose 会持久化应用数据、日志和 Android 兼容层缓存，健康检
 
 ## <img src="https://raw.githubusercontent.com/twitter/twemoji/master/assets/svg/1f4d6.svg" width="24" /> 使用指南
 
+顶部标签按“首页、直播、观看记录”切换，打开根地址默认进入首页；设置入口固定在左下角。手机端同样使用顶部标签，设置面板自适应屏幕宽度；视频播放页保留沉浸布局。
+
 ### 1. 加载配置
 
 打开设置面板，输入 TVBox 配置 JSON 地址（支持历史记录自动保存）：

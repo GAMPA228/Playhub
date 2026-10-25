@@ -161,9 +161,9 @@ export default function LiveView() {
       ) : liveChannels.length === 0 ? (
         <Empty description="暂无频道" />
       ) : (
-        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        <div className="live-columns">
           {/* Channel List */}
-          <div style={{ flex: '0 0 300px', background: 'var(--color-bg-container)', borderRadius: 16, border: '1px solid var(--color-border-light)', overflow: 'hidden', maxHeight: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ minWidth: 0, background: 'var(--color-bg-container)', borderRadius: 16, border: '1px solid var(--color-border-light)', overflow: 'hidden', maxHeight: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
             {liveGroups.length > 0 && (
               <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border-light)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 <Tag color={!selectedGroup ? 'blue' : 'default'} style={{ cursor: 'pointer', borderRadius: 6 }} onClick={() => setSelectedGroup('')}>全部</Tag>
@@ -191,7 +191,7 @@ export default function LiveView() {
           </div>
 
           {/* Player + EPG */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ minWidth: 0 }}>
             {currentChannel && currentSource?.url && !playerFailed ? (
               <PlyrPlayer key={`${currentLiveChannelId}-${currentLiveSourceIndex}`} url={currentSource.url} onError={handlePlayerError} onReady={handlePlayerReady} style={{ borderRadius: 16, overflow: 'hidden' }} />
             ) : currentChannel && playerFailed ? (
