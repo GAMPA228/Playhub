@@ -201,7 +201,6 @@ export default function SettingsDrawer({ onClose }) {
       <Divider />
 
       <Title level={5} style={{ marginBottom: 16 }}>数据源配置</Title>
-      <Alert type="info" showIcon message="数据源保存在服务器，其他设备刷新后共享；这里仍可修改或清空。外观、AI 密钥与观看记录仅保存在当前浏览器。" style={{ marginBottom: 16 }} />
       {store.sourceSettingsError && <Alert type="error" showIcon message={store.sourceSettingsError} description="不会自动使用旧浏览器数据覆盖服务器配置。" action={<Button size="small" loading={store.bootstrapping} disabled={sourceBusy} onClick={() => store.bootstrap({ force: true })}>重新同步</Button>} style={{ marginBottom: 16 }} />}
       {store.legacySourceSettings && (
         <Popconfirm title="将此浏览器旧数据源迁移到服务器？" description="会覆盖对应的服务器配置，并影响其他设备。" onConfirm={handleMigrate} disabled={sourceDisabled}>
@@ -217,11 +216,11 @@ export default function SettingsDrawer({ onClose }) {
               options={historyOptions}
               onChange={setConfigInput}
               onSelect={(val) => { setConfigInput(val); handleLoadConfig(val) }}
-              style={{ flex: 1 }}
+              style={{ flex: 1, minWidth: 0 }}
             >
-              <Input prefix={<LinkOutlined />} placeholder="输入 TVBox 配置 JSON 地址" onPressEnter={() => handleLoadConfig()} />
+              <Input style={{ height: 44 }} prefix={<LinkOutlined />} placeholder="输入 TVBox 配置 JSON 地址" onPressEnter={() => handleLoadConfig()} />
             </AutoComplete>
-            <Button type="primary" disabled={sourceDisabled} loading={loading || store.loading.config} onClick={() => handleLoadConfig()}>加载并保存</Button>
+            <Button type="primary" style={{ height: 44, flexShrink: 0 }} disabled={sourceDisabled} loading={loading || store.loading.config} onClick={() => handleLoadConfig()}>加载并保存</Button>
           </Space.Compact>
         </Form.Item>
         <Popconfirm title="清空服务器视频配置和地址历史？" description="其他设备刷新后也将不再加载该配置。" onConfirm={handleClearVideo} disabled={sourceDisabled}>
