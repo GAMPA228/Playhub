@@ -243,3 +243,12 @@ docker compose up -d --build --force-recreate playhub
 - Chrome 使用最终 JAR 验证 320px 手机与 1440px 桌面、浅/暗主题：输入框和按钮上下沿一致、均为 44px，320px 抽屉内部无横向溢出。拦截本地配置请求模拟加载/禁用态，仍保持对齐，未向外部源发送请求。
 - `npm test` 65 项通过，`npm run build` 成功（既有大包警告）；`mvn -B clean package` 119 项通过。首次 clean 因本地验证进程占用 JAR 失败，停止该进程后重跑成功。JAR 静态文件与工作区逐字节一致，无测试类。
 - 更新了静态产物与默认 Docker 使用的 JAR；无接口、数据、挂载或环境变量变化。默认部署沿用 `git pull --ff-only`、`docker compose up -d --build --force-recreate playhub`，随后强制刷新浏览器；外置静态目录部署可仅同步完整静态目录。回滚可用上一版镜像，不删除数据。
+
+# 网站标签页图标
+
+日期：2026-10-26。
+
+- 补齐原 HTML 引用但缺失的 `/playhub.svg`：蓝色渐变圆角底、白色播放标记，呼应现有页头。资源随站点部署，不依赖第三方图床；另提供 16/32/48px ICO 兼容图标。
+- `npm test` 65 项、`mvn -B clean package` 119 项通过；Vite 构建成功，保留既有大包警告。源码 public、构建静态目录及 JAR 内图标逐字节一致，JAR 无测试类。
+- 使用最终 JAR 本机验证：`/playhub.svg` 和 `/favicon.ico` 均返回 HTTP 200 及正确图片类型；Chrome 从真实首页读取图标链接并成功解码两种格式，现有首页和顶部导航保持不变。
+- 默认 Docker 更新仍为 `git pull --ff-only` 后 `docker compose up -d --build --force-recreate playhub`；更新后强制刷新，若浏览器保留旧标签页图标可关闭标签后重新打开。无配置、数据或接口变化，回滚使用上一版镜像即可。
