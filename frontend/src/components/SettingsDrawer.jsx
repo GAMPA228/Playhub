@@ -146,7 +146,7 @@ export default function SettingsDrawer({ onClose }) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `playhub-config-${Date.now()}.txt`
+    a.download = `mujian-config-${Date.now()}.txt`
     a.click()
     URL.revokeObjectURL(url)
     message.success('配置已导出')

@@ -252,3 +252,13 @@ docker compose up -d --build --force-recreate playhub
 - `npm test` 65 项、`mvn -B clean package` 119 项通过；Vite 构建成功，保留既有大包警告。源码 public、构建静态目录及 JAR 内图标逐字节一致，JAR 无测试类。
 - 使用最终 JAR 本机验证：`/playhub.svg` 和 `/favicon.ico` 均返回 HTTP 200 及正确图片类型；Chrome 从真实首页读取图标链接并成功解码两种格式，现有首页和顶部导航保持不变。
 - 默认 Docker 更新仍为 `git pull --ff-only` 后 `docker compose up -d --build --force-recreate playhub`；更新后强制刷新，若浏览器保留旧标签页图标可关闭标签后重新打开。无配置、数据或接口变化，回滚使用上一版镜像即可。
+
+# 网站品牌更名 MUJIAN
+
+日期：2026-10-26。
+
+- 页头、首页链接的无障碍名称、标签页标题、SVG 标题及配置导出文件名前缀改为 MUJIAN / `mujian-config-`；同步 README、Maven 展示名称与镜像标题标签，保留原播放图标。
+- 仅改展示品牌，不更改仓库、镜像/服务名、JAR 文件名、数据目录、浏览器 `playhub:*` 存储键及配置导入格式；旧设置、观看记录和服务器源配置无需迁移。
+- 新增真实布局渲染和 HTML/SVG 品牌断言，`npm test` 66 项通过；Vite 构建成功（既有大包警告），`mvn -B clean package` 119 项通过。最终 JAR 静态文件逐字节一致，无测试类，Maven 元数据展示 MUJIAN。
+- 最终 JAR 本机 Chrome 验证：桌面标题/页头/图标标题均为 MUJIAN，SVG HTTP 200；原 `playhub:settings` 下暗色和搜索范围刷新后仍生效；真实导出入口生成 `mujian-config-时间戳.txt`（拦截下载，仅验证文件名）。320px 手机保持三个导航同一行，无横向溢出。
+- 发布沿用 `git pull --ff-only`、`docker compose up -d --build --force-recreate playhub` 后强制刷新；无环境变量、挂载或数据迁移变化。未运行 Docker 或操作服务器，回滚可用上一版完整镜像，无须删除数据。

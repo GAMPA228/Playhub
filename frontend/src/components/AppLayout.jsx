@@ -47,9 +47,9 @@ export default function AppLayout({ children }) {
     <Layout className="app-shell">
       <header className="app-header">
         <div className="app-header__inner">
-          <Link to="/" className="app-brand" aria-label="PlayHub 首页">
+          <Link to="/" className="app-brand" aria-label="MUJIAN 首页">
             <span className="app-brand__icon"><PlayCircleOutlined /></span>
-            <span>PlayHub</span>
+            <span>MUJIAN</span>
           </Link>
           <nav className="app-navigation" aria-label="主导航">
             {navItems.map((item) => (

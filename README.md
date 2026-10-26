@@ -8,12 +8,14 @@
 
 <h1 align="center">
   <img src="https://raw.githubusercontent.com/twitter/twemoji/master/assets/svg/1f3ac.svg" width="40" />
-  PlayHub
+  MUJIAN
 </h1>
 
 <p align="center">
   <strong>AI 增强 · 多源聚合 · 影视播放平台</strong>
 </p>
+
+> 网站展示名称为 MUJIAN。为兼容现有部署，仓库名、镜像与服务名、JAR 文件及数据路径仍沿用 `playhub`；已有配置和浏览器存储保持不变。
 
 ![项目访问预览](https://esa-bucket.humorously.cn/QQ20260601-173550.webp)
 
@@ -134,7 +136,7 @@ https://example.com/tvbox.json
 
 ### 2. 搜索影片
 
-在搜索框输入关键词，PlayHub 会**并行搜索所有数据源**，并以进度条展示实时进度。
+在搜索框输入关键词，MUJIAN 会**并行搜索所有数据源**，并以进度条展示实时进度。
 
 搜索由后端统一调度，默认最多同时搜索 2 个源，每源最多等待 10 秒（含初始化）。结果逐步显示，失效源和超时汇总计数，不再逐条弹错。可以点击“停止搜索”保留已返回的结果；打开影片或离开首页也会停止后台搜索。设置中的“仅当前源”对普通搜索和 AI 搜索均生效。
 
@@ -163,7 +165,7 @@ Docker 中可通过 `APP_SEARCH_MAX_CONCURRENCY`（默认 `2`）和 `APP_SEARCH_
 
 ### 5. 直播
 
-设置面板填写 M3U 直播源地址和可选 EPG 地址，点击“保存直播设置”后进入直播页，PlayHub 自动合并同名频道、加载 EPG 节目单。
+设置面板填写 M3U 直播源地址和可选 EPG 地址，点击“保存直播设置”后进入直播页，MUJIAN 自动合并同名频道、加载 EPG 节目单。
 
 ---
 
@@ -173,5 +175,5 @@ Docker 中可通过 `APP_SEARCH_MAX_CONCURRENCY`（默认 `2`）和 `APP_SEARCH_
 
 <p align="center">
   <br />
-  <sub>如果 PlayHub 对你有用，欢迎给个 ⭐</sub>
+  <sub>如果 MUJIAN 对你有用，欢迎给个 ⭐</sub>
 </p>

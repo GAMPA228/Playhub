@@ -42,6 +42,17 @@ function navLinks(html) {
   }))
 }
 
+test('MUJIAN branding is used in the header, tab title and favicon metadata', async () => {
+  const html = render()
+  assert.ok(html.includes('aria-label="MUJIAN 首页"'))
+  assert.ok(html.includes('<span>MUJIAN</span>'))
+  assert.equal(/playhub/i.test(html), false)
+  const entry = await readFile(new URL('../index.html', import.meta.url), 'utf8')
+  const icon = await readFile(new URL('../public/playhub.svg', import.meta.url), 'utf8')
+  assert.ok(entry.includes('<title>MUJIAN</title>'))
+  assert.ok(icon.includes('<title>MUJIAN</title>'))
+})
+
 test('top navigation has exactly home, live, history in order and defaults to home', () => {
   const html = render()
   const links = navLinks(html)
