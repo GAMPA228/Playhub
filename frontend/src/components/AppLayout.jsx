@@ -113,7 +113,7 @@ export default function AppLayout({ children }) {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
       >
-        <SettingsDrawer onClose={() => setSettingsOpen(false)} />
+        <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       </Drawer>
     </Layout>
   )

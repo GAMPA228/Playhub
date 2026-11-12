@@ -81,3 +81,14 @@ export function getProgress(id, config = {}) {
 export function resolveBilibili(body, config = {}) {
   return postJson('/api/bilibili/resolve', body, config)
 }
+
+export function getBilibiliAuth(config = {}) {
+  return getJson('/api/bilibili/auth', config)
+}
+
+export function saveBilibiliAuth(cookie, config = {}) {
+  return postJson('/api/bilibili/auth', { cookie }, {
+    ...config,
+    headers: { ...config.headers, 'X-Mujian-Settings': '1' },
+  })
+}

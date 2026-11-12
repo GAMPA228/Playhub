@@ -6,7 +6,6 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -14,6 +13,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /** B站专用请求边界；账号 Cookie 只发给固定 API，不会跟随短链或媒体重定向。 */
 @Component
@@ -27,23 +27,33 @@ public class BilibiliHttpClient {
     private final OkHttpClient client;
     private final OkHttpClient mediaClient;
     private final ObjectMapper mapper;
-    private final String cookie;
+    private final Supplier<String> cookieProvider;
 
     @Autowired
-    public BilibiliHttpClient(ObjectMapper mapper, @Value("${BILIBILI_COOKIE:}") String cookie) {
+    public BilibiliHttpClient(ObjectMapper mapper, BilibiliAuthService auth) {
         this(new OkHttpClient.Builder()
                 .connectTimeout(Duration.ofSeconds(8))
                 .readTimeout(Duration.ofSeconds(20))
                 .callTimeout(Duration.ofSeconds(30))
-                .build(), mapper, cookie);
+                .build(), mapper, auth::currentCookie);
     }
 
     BilibiliHttpClient(OkHttpClient client, ObjectMapper mapper, String cookie) {
+        this(client, mapper, fixedCookie(cookie));
+    }
+
+    BilibiliHttpClient(OkHttpClient client, ObjectMapper mapper, Supplier<String> cookieProvider) {
         this.client = client.newBuilder().followRedirects(false).followSslRedirects(false).build();
         this.mediaClient = this.client.newBuilder().callTimeout(Duration.ZERO).build();
         this.mapper = mapper;
-        this.cookie = cookie == null ? "" : cookie.trim();
-        if (this.cookie.length() > 16384 || this.cookie.chars().anyMatch(value -> value < 32 || value > 126)) {
+        this.cookieProvider = cookieProvider;
+    }
+
+    private static Supplier<String> fixedCookie(String raw) {
+        try {
+            String cookie = BilibiliAuthService.normalizeCookie(raw == null ? "" : raw);
+            return () -> cookie;
+        } catch (IllegalArgumentException ex) {
             throw new IllegalStateException("BILIBILI_COOKIE 格式不正确");
         }
     }
@@ -55,6 +65,7 @@ public class BilibiliHttpClient {
             throw new IllegalArgumentException("不是受支持的 B站 API 地址");
         }
         Request.Builder request = request(uri, referer);
+        String cookie = cookieProvider.get();
         if (!cookie.isBlank()) {
             request.header("Cookie", cookie);
         }
@@ -78,7 +89,7 @@ public class BilibiliHttpClient {
             int code = root.path("code").asInt(-1);
             if (code != 0) {
                 String hint = switch (code) {
-                    case -101 -> "登录态无效或已过期，请检查 BILIBILI_COOKIE";
+                    case -101 -> "登录态无效或已过期，请在设置的 B站登录态中更新 Cookie";
                     case -403, -412, -352 -> "本次请求受到平台限制，请稍后重试";
                     case -404, 62002, 62004 -> "内容不存在、已删除或不可见";
                     default -> "无法获取该内容，可能需要登录或没有观看权限";

@@ -2,10 +2,11 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Form, Input, Button, Select, Space, Divider, Typography, message, List, Popconfirm, AutoComplete, Switch, Modal, Alert } from 'antd'
 import { DeleteOutlined, LinkOutlined, HistoryOutlined, ClockCircleOutlined, RobotOutlined, CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined, ExportOutlined, ImportOutlined, LockOutlined } from '@ant-design/icons'
 import { useStore } from '../stores/useStore'
+import BilibiliAuthSettings from './BilibiliAuthSettings'
 
 const { Text, Title } = Typography
 
-export default function SettingsDrawer({ onClose }) {
+export default function SettingsDrawer({ onClose, open = true }) {
   const store = useStore()
   const [configInput, setConfigInput] = useState(store.configUrl || '')
   const [loading, setLoading] = useState(false)
@@ -256,6 +257,10 @@ export default function SettingsDrawer({ onClose }) {
           />
         </>
       )}
+
+      <Divider />
+
+      <BilibiliAuthSettings open={open} />
 
       <Divider />
 

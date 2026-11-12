@@ -227,7 +227,7 @@ public class BilibiliService {
         }
         String notice = requestedQuality != null && requestedQuality != actualQuality
                 ? "所选清晰度不可用，已使用 " + qualityLabel(actualQuality) + "；可用画质取决于登录态与账号权限。"
-                : "可用清晰度取决于账号权限；如需登录画质，可由管理员配置服务端 BILIBILI_COOKIE。";
+                : "可用清晰度取决于账号权限；如需登录画质，可在设置的 B站登录态中保存 Cookie。";
         return new Result(true, "video", "ready", info.path("title").asText("B站视频"),
                 info.path("owner").path("name").asText(), safeCover(info.path("pic").asText()),
                 VIDEO_REFERER + "video/" + bvid, page, List.copyOf(pages), actualQuality,

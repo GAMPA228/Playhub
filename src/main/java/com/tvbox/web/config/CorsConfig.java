@@ -9,6 +9,12 @@ public class CorsConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        // Credential writes require X-Mujian-Settings, which cross-origin preflights may not request.
+        // Keep this specific rule before the legacy permissive API mapping.
+        registry.addMapping("/api/bilibili/auth")
+                .allowedOrigins("*")
+                .allowedMethods("GET", "POST")
+                .allowedHeaders("Content-Type");
         registry.addMapping("/api/**")
                 .allowedOrigins("*")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")

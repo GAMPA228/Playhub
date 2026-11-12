@@ -165,7 +165,7 @@ export default function BilibiliView() {
               onError={handlePlaybackError} onTimeUpdate={(time) => { if (time > 0) position.current = time }} onPlaybackState={(playing) => { wasPlaying.current = playing }} />
           ) : <Empty description={result.status === 'loop' ? '当前房间处于轮播状态，暂未开播' : '主播暂未开播，可以稍后重新检查'} style={{ padding: '32px 0' }} />}
           <Text type="secondary" style={{ display: 'block', marginTop: 14, fontSize: 12 }}>
-            若平台要求登录或限制清晰度，可由管理员在服务器配置 BILIBILI_COOKIE；登录态不会发送到此页面。
+            若平台要求登录或限制清晰度，可在“设置 → B站登录态”中保存或替换 Cookie；服务器不会回显已保存的 Cookie。
           </Text>
         </section>
       ) : !loading && !error && <Empty description="粘贴一个 B站视频或直播间链接开始播放" style={{ padding: '48px 0' }} />}
