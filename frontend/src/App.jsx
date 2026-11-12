@@ -7,6 +7,7 @@ import DetailView from './views/DetailView'
 import PlayerView from './views/PlayerView'
 import HistoryView from './views/HistoryView'
 import LiveView from './views/LiveView'
+import BilibiliView from './views/BilibiliView'
 
 function AnimatedRoutes() {
   const location = useLocation()
@@ -18,6 +19,7 @@ function AnimatedRoutes() {
         <Route path="/player" element={<PlayerView />} />
         <Route path="/history" element={<HistoryView />} />
         <Route path="/live" element={<LiveView />} />
+        <Route path="/resolve" element={<BilibiliView />} />
       </Routes>
     </AnimatePresence>
   )

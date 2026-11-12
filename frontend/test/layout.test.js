@@ -53,11 +53,11 @@ test('MUJIAN branding is used in the header, tab title and favicon metadata', as
   assert.ok(icon.includes('<title>MUJIAN</title>'))
 })
 
-test('top navigation has exactly home, live, history in order and defaults to home', () => {
+test('top navigation has home, live, history, resolver in order and defaults to home', () => {
   const html = render()
   const links = navLinks(html)
-  assert.deepEqual(links.map((item) => item.path), ['/', '/live', '/history'])
-  assert.deepEqual(links.map((item) => item.text), ['首页', '直播', '观看记录'])
+  assert.deepEqual(links.map((item) => item.path), ['/', '/live', '/history', '/resolve'])
+  assert.deepEqual(links.map((item) => item.text), ['首页', '直播', '观看记录', '视频解析'])
   assert.deepEqual(links.filter((item) => item.active).map((item) => item.path), ['/'])
   assert.equal(html.includes('ant-layout-sider'), false)
   assert.equal(html.includes('menu-fold'), false)
@@ -65,7 +65,7 @@ test('top navigation has exactly home, live, history in order and defaults to ho
   assert.ok(html.includes('id="route-content"'))
 })
 
-for (const path of ['/live', '/history', '/detail?source=s0&vod=m1']) {
+for (const path of ['/live', '/history', '/resolve', '/detail?source=s0&vod=m1']) {
   test(`route ${path} selects its own section without redirecting to home`, () => {
     const active = navLinks(render(path)).filter((item) => item.active)
     assert.deepEqual(active.map((item) => item.path), [path.startsWith('/detail') ? '/' : path])

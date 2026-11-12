@@ -77,3 +77,7 @@ export function batchDetail(items) {
 export function getProgress(id, config = {}) {
   return getJson(`/api/progress/${encodeURIComponent(id)}`, config)
 }
+
+export function resolveBilibili(body, config = {}) {
+  return postJson('/api/bilibili/resolve', body, config)
+}

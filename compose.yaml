@@ -3,6 +3,8 @@ services:
     build: .
     image: playhub:local
     restart: unless-stopped
+    environment:
+      BILIBILI_COOKIE: ${BILIBILI_COOKIE:-}
     ports:
       - "18080:18080"
     volumes:

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Layout, Button, Drawer, Typography } from 'antd'
 import {
   HomeOutlined,
@@ -6,6 +6,7 @@ import {
   VideoCameraOutlined,
   SettingOutlined,
   PlayCircleOutlined,
+  LinkOutlined,
 } from '@ant-design/icons'
 import { Link, useLocation } from 'react-router-dom'
 import { useStore } from '../stores/useStore'
@@ -18,6 +19,7 @@ const navItems = [
   { key: '/', icon: <HomeOutlined />, label: '首页' },
   { key: '/live', icon: <VideoCameraOutlined />, label: '直播' },
   { key: '/history', icon: <HistoryOutlined />, label: '观看记录' },
+  { key: '/resolve', icon: <LinkOutlined />, label: '视频解析' },
 ]
 
 export default function AppLayout({ children }) {
@@ -26,7 +28,17 @@ export default function AppLayout({ children }) {
   const historyCount = useStore((s) => s.history.length)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [error, setError] = useState(null)
-  const activeKey = location.pathname === '/live' || location.pathname === '/history' ? location.pathname : '/'
+  const navigationRef = useRef(null)
+  const activeKey = navItems.some((item) => item.key === location.pathname) ? location.pathname : '/'
+
+  useEffect(() => {
+    const revealActiveTab = () => {
+      navigationRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+    revealActiveTab()
+    window.addEventListener('resize', revealActiveTab)
+    return () => window.removeEventListener('resize', revealActiveTab)
+  }, [activeKey])
 
   useEffect(() => {
     bootstrap().catch((err) => {
@@ -51,7 +63,7 @@ export default function AppLayout({ children }) {
             <span className="app-brand__icon"><PlayCircleOutlined /></span>
             <span>MUJIAN</span>
           </Link>
-          <nav className="app-navigation" aria-label="主导航">
+          <nav ref={navigationRef} className="app-navigation" aria-label="主导航">
             {navItems.map((item) => (
               <Link
                 key={item.key}
